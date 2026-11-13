@@ -150,7 +150,9 @@ def _language_factory() -> _LanguageFactory:
 
 
 def validate_topic(raw: str) -> TopicResult | None:
-    from langdetect.lang_detect_exception import LangDetectException  # pyright: ignore[reportMissingTypeStubs]  # No stubs.
+    from langdetect.lang_detect_exception import (  # pyright: ignore[reportMissingTypeStubs]  # No stubs.
+        LangDetectException,
+    )
 
     try:
         result: Final = TopicResult.model_validate_json(raw)
