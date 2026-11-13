@@ -40,6 +40,8 @@ def _frame(body: Mapping[str, JsonValue]) -> bytes:
 
 
 def _upstream(request: Request) -> Reply:
+    if request.method == "GET" and request.target == "/v1/models":
+        return Reply(body=b'{"object":"list","data":[]}')
     assert request.target.endswith("/chat/completions"), request.target
     body: Final = JSON_OBJECT.validate_json(request.body)
     summary: Final = object_value(body.get("response_format", {})).get("type") == "json_schema"
@@ -121,6 +123,7 @@ def _configuration(directory: Path, upstream: Wire) -> Path:
                 "general_settings": {
                     "master_key": "os.environ/LITELLM_MASTER_KEY",
                     "database_url": "os.environ/DATABASE_URL",
+                    "disable_model_info_refresh": True,
                     "store_prompts_in_spend_logs": False,
                     "disable_spend_logs": False,
                     "proxy_batch_write_at": 1,

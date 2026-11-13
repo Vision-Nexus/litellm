@@ -6,6 +6,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
+from importlib.resources import files
 from types import MappingProxyType
 from typing import Final, Protocol, cast  # noqa: TID251  # langdetect has no typed factory interface.
 
@@ -138,18 +139,18 @@ class _LanguageFactory(Protocol):
 
 @lru_cache(maxsize=1)
 def _language_factory() -> _LanguageFactory:
-    from langdetect.detector_factory import PROFILES_DIRECTORY, DetectorFactory
+    from langdetect.detector_factory import DetectorFactory  # pyright: ignore[reportMissingTypeStubs]  # Methods are narrowed through _LanguageFactory.
 
-    factory: Final = cast(
+    factory: Final = cast(  # cast-ok: typed boundary for the untyped language library
         _LanguageFactory, DetectorFactory()
-    )  # cast-ok: typed boundary for the untyped language library
-    factory.load_profile(PROFILES_DIRECTORY)
+    )
+    factory.load_profile(str(files("langdetect").joinpath("profiles")))
     factory.set_seed(0)
     return factory
 
 
 def validate_topic(raw: str) -> TopicResult | None:
-    from langdetect.lang_detect_exception import LangDetectException
+    from langdetect.lang_detect_exception import LangDetectException  # pyright: ignore[reportMissingTypeStubs]  # Upstream does not ship exception stubs.
 
     try:
         result: Final = TopicResult.model_validate_json(raw)

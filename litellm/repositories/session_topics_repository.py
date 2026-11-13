@@ -143,7 +143,7 @@ class SessionTopicsRepository:
                 OR EXISTS (SELECT 1 FROM "LiteLLM_SessionTopicWorkerKey" w WHERE w.key_hash=s.api_key)
                 THEN 'session_topic'
                 WHEN s.call_type IN ('acompletion','completion','aresponses','responses',
-                     'anthropic_messages','_aresponses_websocket') AND k.token IS NOT NULL THEN 'business'
+                     'anthropic_messages','_aresponses_websocket') THEN 'business'
                 ELSE 'other' END AS kind,
                 count(*) AS requests,count(*) FILTER(WHERE s.status='success') AS successful,
                 count(*) FILTER(WHERE s.status='failure') AS failed,

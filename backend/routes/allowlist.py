@@ -159,6 +159,8 @@ BACKEND_EXACT_PATHS: frozenset[str] = frozenset(
         "/docs/oauth2-redirect",
         "/redoc",
         "/fallback/login",
+        "/session_topics",
+        "/session_topics/overview",
         "/mcp",  # bare spelling of the aggregate MCP endpoint; /mcp/ prefix covers the rest
     }
 )

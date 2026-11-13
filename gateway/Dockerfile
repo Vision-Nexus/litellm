@@ -90,6 +90,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra proxy-runtime \
         --group admin-mcp \
         --extra extra_proxy \
+        --extra session_topics \
         --extra semantic-router \
         --extra bedrock-realtime \
         --python python3.13
@@ -103,6 +104,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra proxy-runtime \
         --group admin-mcp \
         --extra extra_proxy \
+        --extra session_topics \
         --extra semantic-router \
         --extra bedrock-realtime \
         --python python3.13

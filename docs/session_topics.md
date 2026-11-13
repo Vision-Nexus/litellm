@@ -52,7 +52,7 @@ Open **Observability / Session topics** in the dashboard. The page shows only th
 
 Reads are audited with an opaque actor reference, operation, count and timestamp. Topic content is not copied into the read audit. Topic records and read audits are purged in bounded batches after 30 days. Summary-key hashes are retained as accounting classification metadata. No raw key is stored in these tables.
 
-The original request ledger remains intact. A failed or timed-out summary can still have a provider charge. Do not delete internal summary records or treat a missing usage response as zero cost. The displayed values are LiteLLM-recorded spend, not reconciled provider invoices.
+The original request ledger remains intact. Revoking a key does not reclassify its historical inference or summary requests. A failed or timed-out summary can still have a provider charge. Do not delete internal summary records or treat a missing usage response as zero cost. The displayed values are LiteLLM-recorded spend, not reconciled provider invoices.
 
 ## Verification and rollout
 

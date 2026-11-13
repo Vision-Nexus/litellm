@@ -199,6 +199,9 @@ async def test_summary_cost_is_separate_even_when_model_and_user_are_shared(quer
     assert next(row.requests for row in after_rotation.usage if row.kind == "session_topic") == 1
     own: Final = await store.overview(TopicViewer(actor_ref="user-a", user_id="user-a"), (worker,), 7)
     assert tuple(row.kind for row in own.usage) == ("business",)
+    await queries.execute_raw('DELETE FROM "LiteLLM_VerificationToken" WHERE token IN ($1,$2)', business, worker)
+    after_revocation: Final = await store.overview(admin(), ("f" * 64,), 7)
+    assert after_revocation.usage == result.usage
 
 
 @pytest.mark.asyncio
