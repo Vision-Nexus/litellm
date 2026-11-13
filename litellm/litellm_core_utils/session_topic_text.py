@@ -139,7 +139,9 @@ class _LanguageFactory(Protocol):
 def _language_factory() -> _LanguageFactory:
     from langdetect.detector_factory import PROFILES_DIRECTORY, DetectorFactory
 
-    factory: Final = cast(_LanguageFactory, DetectorFactory())  # cast-ok: typed boundary for the untyped language library
+    factory: Final = cast(
+        _LanguageFactory, DetectorFactory()
+    )  # cast-ok: typed boundary for the untyped language library
     factory.load_profile(PROFILES_DIRECTORY)
     factory.set_seed(0)
     return factory

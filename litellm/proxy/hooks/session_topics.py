@@ -160,12 +160,14 @@ async def validate_configuration(
 
 @asynccontextmanager
 async def session_topics_lifespan(
-    app: FastAPI, prisma_client: PrismaClient | None, general_settings: Mapping[str, object]
+    app: FastAPI | None, prisma_client: PrismaClient | None, general_settings: Mapping[str, object]
 ) -> AsyncGenerator[None, None]:
     config: Final = TopicConfig.from_environment(os.environ)
     if not config.enabled:
         yield
         return
+    if app is None:
+        raise ValueError("Session topics require an ASGI application")
     if prisma_client is None:
         raise ValueError("Session topics require a configured database")
     store: Final = SessionTopicsRepository(
@@ -185,7 +187,8 @@ async def session_topics_lifespan(
         app.state.session_topics = None  # rebind-ok: remove the closed lifespan-owned service
 
 
-async def stop_session_topics(app: FastAPI) -> None:
-    runtime: Final = getattr(app.state, "session_topics", None)
+async def stop_session_topics(app: FastAPI | None) -> None:
+    state: Final[object] = getattr(app, "state", None)
+    runtime: Final = getattr(state, "session_topics", None)
     if isinstance(runtime, SessionTopicRuntime):
         await runtime.stop()

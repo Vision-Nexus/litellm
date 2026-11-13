@@ -1856,7 +1856,8 @@ async def _proxy_lifespan(app: FastAPI, resources: AsyncExitStack) -> AsyncGener
         await initialize_shared_aiohttp_session()
     )
 
-    await resources.enter_async_context(session_topics_lifespan(app, prisma_client, general_settings))
+    if os.environ.get("LITELLM_SESSION_TOPICS_ENABLED", "false").lower() == "true":
+        await resources.enter_async_context(session_topics_lifespan(app, prisma_client, general_settings))
 
     model_info_refresh_disabled: Final = (
         "disable_model_info_refresh" in general_settings and general_settings["disable_model_info_refresh"] is True
