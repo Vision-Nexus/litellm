@@ -2147,3 +2147,41 @@ model LiteLLM_SubscriptionAccountTable {
 
   @@unique([custom_llm_provider, account_id], map: "LiteLLM_SubscriptionAccountTable_provider_account_key")
 }
+
+model LiteLLM_SessionTopic {
+  session_ref     String   @id
+  key_hash        String
+  user_id         String?
+  team_id         String?
+  organization_id String?
+  topic           String?  @client.VarChar(50)
+  category        String?
+  status          String   @default("pending")
+  attempts        Int      @default(0)
+  model           String
+  prompt_version  String
+  lease           String?
+  lease_until     DateTime? @client.Timestamptz(6)
+  first_seen      DateTime @default(now()) @client.Timestamptz(6)
+  last_seen       DateTime @default(now()) @client.Timestamptz(6)
+  updated_at      DateTime @default(now()) @client.Timestamptz(6)
+
+  @@index([user_id, last_seen])
+  @@index([key_hash, last_seen])
+  @@index([last_seen])
+}
+
+model LiteLLM_SessionTopicReadAudit {
+  id           BigInt   @id @default(autoincrement())
+  actor_ref    String
+  operation    String
+  result_count Int
+  created_at   DateTime @default(now()) @client.Timestamptz(6)
+
+  @@index([created_at])
+}
+
+model LiteLLM_SessionTopicWorkerKey {
+  key_hash   String   @id
+  created_at DateTime @default(now()) @client.Timestamptz(6)
+}
