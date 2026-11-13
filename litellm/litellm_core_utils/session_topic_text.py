@@ -139,7 +139,7 @@ class _LanguageFactory(Protocol):
 
 @lru_cache(maxsize=1)
 def _language_factory() -> _LanguageFactory:
-    from langdetect.detector_factory import DetectorFactory  # pyright: ignore[reportMissingTypeStubs]  # Methods are narrowed through _LanguageFactory.
+    from langdetect.detector_factory import DetectorFactory  # pyright: ignore[reportMissingTypeStubs]  # Untyped API.
 
     factory: Final = cast(  # cast-ok: typed boundary for the untyped language library
         _LanguageFactory, DetectorFactory()
@@ -150,7 +150,7 @@ def _language_factory() -> _LanguageFactory:
 
 
 def validate_topic(raw: str) -> TopicResult | None:
-    from langdetect.lang_detect_exception import LangDetectException  # pyright: ignore[reportMissingTypeStubs]  # Upstream does not ship exception stubs.
+    from langdetect.lang_detect_exception import LangDetectException  # pyright: ignore[reportMissingTypeStubs]  # No stubs.
 
     try:
         result: Final = TopicResult.model_validate_json(raw)

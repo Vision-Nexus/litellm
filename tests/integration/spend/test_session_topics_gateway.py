@@ -133,6 +133,7 @@ def _configuration(directory: Path, upstream: Wire) -> Path:
                     "turn_off_message_logging": True,
                     "set_verbose": False,
                     "request_correlation_in_logs": True,
+                    "use_chat_completions_url_for_anthropic_messages": True,
                 },
                 "router_settings": {
                     "num_retries": 0,
