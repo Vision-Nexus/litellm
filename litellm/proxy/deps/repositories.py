@@ -14,12 +14,10 @@ from litellm.repositories.user_banner_repository import UserBannerRepository
 
 
 async def get_session_topics_repository(database: DatabaseDep) -> TopicStore | None:
-    return (
-        None
-        if database is None
-        else SessionTopicsRepository(
+    if database is None:
+        return None
+    return SessionTopicsRepository(
         lambda: cast(TopicDatabase, database.prisma.writer_db)  # cast-ok: Prisma's raw query interface is structural
-        )
     )
 
 

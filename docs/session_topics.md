@@ -46,7 +46,7 @@ The default model request uses Chat Completions, strict JSON Schema, `reasoning_
 
 Open **Observability / Session topics** in the dashboard. The page shows only the generated topic, category, state, owner, key reference and timestamps. It has no conversation-content drill-down. Paging stays in the URL and credentials are never written to browser local storage by this feature.
 
-`GET /session_topics?limit=50&offset=0` returns topics visible to the authenticated caller. Proxy administrators and read-only proxy administrators can see all records. Other callers can see only their own user or key records. Existing route-permission checks still apply. An inference-only key does not gain management access. The summary key is explicitly denied access to the topic reader.
+`GET /session_topics?limit=50&offset=0` returns topics visible to the authenticated caller. Proxy administrators and read-only proxy administrators can see all records. Verified dashboard sessions can see their owner's records. Other API keys are restricted to their own key records, even when keys share an owner. Existing route-permission checks still apply. An inference-only key does not gain management access. The summary key is explicitly denied access to the topic reader.
 
 `GET /session_topics/overview?days=7` returns retained-session status counts and usage from the existing spend ledger. Business inference, internal summaries and other gateway traffic are reported separately. Classification uses authenticated key hashes, not the model name or caller-provided purpose labels. Summary-key hashes are registered persistently so rotating a key does not reclassify its historical spend as business usage. Regular callers do not receive other users' or the shared summary service's usage.
 

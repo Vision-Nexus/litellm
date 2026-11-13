@@ -7,16 +7,13 @@ import re
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final, Protocol, cast
 
 from pydantic import TypeAdapter, ValidationError
 
 from litellm.constants import SESSION_ID_GENERATED_METADATA_KEY
 from litellm.litellm_core_utils.llm_judge import extract_text_from_content
 from litellm.models.session_topics import TopicResult, TopicScope
-
-if TYPE_CHECKING:
-    from lingua import LanguageDetector
 
 _SESSION: Final = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 _HASH: Final = re.compile(r"^[a-f0-9]{64}$")
@@ -124,15 +121,32 @@ def sanitize_input(text: str) -> str:
     return " ".join(without_identifiers.split())[:8192]
 
 
-@lru_cache(maxsize=1)
-def _english_detector() -> LanguageDetector:
-    from lingua import LanguageDetectorBuilder
+class _LanguageDetector(Protocol):
+    def append(self, text: str) -> None: ...
 
-    return LanguageDetectorBuilder.from_all_spoken_languages().with_low_accuracy_mode().build()
+    def detect(self) -> str: ...
+
+
+class _LanguageFactory(Protocol):
+    def load_profile(self, directory: str) -> None: ...
+
+    def set_seed(self, seed: int) -> None: ...
+
+    def create(self) -> _LanguageDetector: ...
+
+
+@lru_cache(maxsize=1)
+def _language_factory() -> _LanguageFactory:
+    from langdetect.detector_factory import PROFILES_DIRECTORY, DetectorFactory
+
+    factory: Final = cast(_LanguageFactory, DetectorFactory())  # cast-ok: typed boundary for the untyped language library
+    factory.load_profile(PROFILES_DIRECTORY)
+    factory.set_seed(0)
+    return factory
 
 
 def validate_topic(raw: str) -> TopicResult | None:
-    from lingua import Language
+    from langdetect.lang_detect_exception import LangDetectException
 
     try:
         result: Final = TopicResult.model_validate_json(raw)
@@ -142,6 +156,11 @@ def validate_topic(raw: str) -> TopicResult | None:
         return None
     if _SECRET.search(result.topic) or _IDENTIFIER.search(result.topic):
         return None
-    if _english_detector().detect_language_of(result.topic) != Language.ENGLISH:
+    detector: Final = _language_factory().create()
+    try:
+        detector.append(result.topic)
+        if detector.detect() != "en":
+            return None
+    except LangDetectException:
         return None
     return result

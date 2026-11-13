@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 TOPIC_MAX_CHARACTERS: Final = 50
 TOPIC_PROMPT_VERSION: Final = "english-topic-v1"
-TopicCategory: TypeAlias = Literal["engineering", "operations", "data_analysis", "writing", "general", "other", "unknown"]
+TopicCategory: TypeAlias = Literal[
+    "engineering", "operations", "data_analysis", "writing", "general", "other", "unknown"
+]
 
 
 class TopicState(str, Enum):

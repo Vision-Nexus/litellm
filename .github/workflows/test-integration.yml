@@ -85,16 +85,21 @@ jobs:
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
+          wait_postgres() {
+            for attempt in $(seq 1 30); do
+              if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres; then return 0; fi
+              sleep 1
+            done
+            return 1
+          }
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d circle_test -c "ALTER SYSTEM SET max_connections = '1000'"
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d circle_test -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements'"
+          docker restart "$POSTGRES_CONTAINER"
+          wait_postgres
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d circle_test -c "ALTER SYSTEM SET pg_stat_statements.track = 'all'"
           docker exec "$POSTGRES_CONTAINER" psql -U postgres -d circle_test -c "ALTER SYSTEM SET pg_stat_statements.max = '20000'"
           docker restart "$POSTGRES_CONTAINER"
-          for attempt in $(seq 1 30); do
-            if docker exec "$POSTGRES_CONTAINER" pg_isready -U postgres; then exit 0; fi
-            sleep 1
-          done
-          exit 1
+          wait_postgres
 
       - name: Set up Python
         timeout-minutes: 3

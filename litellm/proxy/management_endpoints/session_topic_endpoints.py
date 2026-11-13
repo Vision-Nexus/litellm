@@ -6,6 +6,7 @@ from typing import Annotated, Final, TypeAlias
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from litellm.constants import UI_SESSION_TOKEN_TEAM_ID
 from litellm.models.session_topics import TopicOverview, TopicPage, TopicViewer
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
@@ -27,17 +28,20 @@ def topic_viewer(auth: UserAPIKeyAuth, runtime: SessionTopicRuntime) -> TopicVie
     key: Final = authenticated_key(auth)
     if key in runtime.hook.worker_hashes:
         raise HTTPException(status_code=403, detail="The summary service cannot read session topics")
-    if not key and not auth.user_id:
+    is_admin: Final = str(auth.user_role) in ("proxy_admin", "proxy_admin_viewer")
+    owner: Final = auth.user_id if auth.team_id == UI_SESSION_TOKEN_TEAM_ID else None
+    if not key and not owner and not is_admin:
         raise HTTPException(status_code=403, detail="A user or key identity is required")
+    actor_identity: Final = f"actor-user:{owner}" if owner else f"actor-key:{key or auth.user_id}"
     actor: Final = hmac.new(
         runtime.config.identity_secret.get_secret_value().encode(),
-        (auth.user_id or key or "").encode(),
+        actor_identity.encode(),
         hashlib.sha256,
     ).hexdigest()
     return TopicViewer(
         actor_ref=actor,
-        admin=str(auth.user_role) in ("proxy_admin", "proxy_admin_viewer"),
-        user_id=auth.user_id,
+        admin=is_admin,
+        user_id=owner,
         key_hash=key,
     )
 

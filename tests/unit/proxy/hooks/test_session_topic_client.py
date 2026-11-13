@@ -101,3 +101,23 @@ async def test_provider_error_does_not_retry_or_return_the_error_body(caplog: py
     assert result.state == TopicState.UPSTREAM_FAILURE
     assert "private-error-canary" not in result.model_dump_json()
     assert "private-error-canary" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_lifespan_transport_is_reused_and_closed_by_its_owner() -> None:
+    calls: Final[list[str]] = []  # mutable-ok: records external requests
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        calls.append(request.method)
+        return httpx.Response(200, json=response_body("Investigating database connection timeouts"))
+
+    client: Final = httpx.AsyncClient(transport=httpx.MockTransport(transport))
+    generator: Final = LunaTopicGenerator(TopicConfig(virtual_key=SecretStr("test-key")), client)
+    try:
+        assert (await generator.generate("Investigate database errors", repair=False)).state == TopicState.READY
+        assert not client.is_closed
+        assert (await generator.generate("Review connection timeouts", repair=False)).state == TopicState.READY
+        assert calls == ["POST", "POST"]
+    finally:
+        await generator.aclose()
+    assert client.is_closed

@@ -15,16 +15,17 @@ from fastapi import FastAPI
 from psycopg.rows import dict_row
 from pydantic import SecretStr
 
+from litellm.caching.caching import DualCache
+from litellm.constants import UI_SESSION_TOKEN_TEAM_ID
 from litellm.litellm_core_utils.session_topic_text import latest_user_text, make_scope
 from litellm.models.session_topics import TopicAttempt, TopicConfig, TopicResult, TopicState, TopicViewer
-from litellm.proxy.hooks.session_topic_client import LunaTopicGenerator
-from litellm.proxy.hooks.session_topic_engine import TopicEngine, TopicJob
-from litellm.proxy.hooks.session_topics import SessionTopicRuntime
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.deps.repositories import get_session_topics_repository
+from litellm.proxy.hooks.session_topic_client import LunaTopicGenerator
+from litellm.proxy.hooks.session_topic_engine import TopicEngine, TopicJob
+from litellm.proxy.hooks.session_topics import SessionTopicRuntime
 from litellm.proxy.management_endpoints.session_topic_endpoints import router as topics_router
-from litellm.caching.caching import DualCache
 from litellm.repositories.session_topics_repository import SessionTopicsRepository
 
 _MIGRATION: Final = (
@@ -290,14 +291,23 @@ async def test_real_reader_routes_filter_users_and_deny_summary_identity(queries
     app.dependency_overrides[get_session_topics_repository] = lambda: store
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-            app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(user_id="user-a", user_role="internal_user")
+            app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(
+                user_id="user-a", user_role="internal_user", team_id=UI_SESSION_TOKEN_TEAM_ID,
+            )
             own: Final = await client.get("/session_topics")
             assert own.status_code == 200
             assert [row["user_id"] for row in own.json()["items"]] == ["user-a"]
+            await store.observe(scope(user="user-a", key="sibling-key"), "test-model", TopicState.INSUFFICIENT_INPUT)
+            app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(
+                user_id="user-a", user_role="internal_user", api_key=scope().key_hash,
+            )
+            key_scoped: Final = await client.get("/session_topics")
+            assert key_scoped.status_code == 200
+            assert [row["key_hash"] for row in key_scoped.json()["items"]] == [scope().key_hash]
             app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(user_id="admin", user_role="proxy_admin")
             all_rows: Final = await client.get("/session_topics")
             assert all_rows.status_code == 200
-            assert len(all_rows.json()["items"]) == 2
+            assert len(all_rows.json()["items"]) == 3
             app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(
                 api_key=next(iter(runtime.hook.worker_hashes)), user_role="proxy_admin",
             )
