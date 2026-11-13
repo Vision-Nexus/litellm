@@ -31,6 +31,7 @@ const LEGACY_PAGE_ROUTES: ReadonlyMap<string, string> = new Map(
     "ui-theme": "ui-theme",
     telemetry: "telemetry",
     logs: "logs",
+    "session-topics": "session-topics",
     lens: "lens",
     "admin-panel": "admin-panel",
     "logging-and-alerts": "logging-and-alerts",

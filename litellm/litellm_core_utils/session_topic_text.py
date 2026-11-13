@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from importlib.resources import files
 from types import MappingProxyType
-from typing import Final, Protocol, cast  # noqa: TID251  # langdetect has no typed factory interface.
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -129,6 +129,7 @@ class _LanguageDetector(Protocol):
     def detect(self) -> str: ...
 
 
+@runtime_checkable
 class _LanguageFactory(Protocol):
     def load_profile(self, directory: str) -> None: ...
 
@@ -141,9 +142,9 @@ class _LanguageFactory(Protocol):
 def _language_factory() -> _LanguageFactory:
     from langdetect.detector_factory import DetectorFactory  # pyright: ignore[reportMissingTypeStubs]  # Untyped API.
 
-    factory: Final = cast(  # cast-ok: typed boundary for the untyped language library
-        _LanguageFactory, DetectorFactory()
-    )
+    factory: Final[object] = DetectorFactory()
+    if not isinstance(factory, _LanguageFactory):
+        raise TypeError("Session topic language detector has an incompatible interface")
     factory.load_profile(str(files("langdetect").joinpath("profiles")))
     factory.set_seed(0)
     return factory
