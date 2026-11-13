@@ -1,3 +1,5 @@
+SET LOCAL lock_timeout = '10s';
+
 CREATE TABLE "LiteLLM_SessionTopic" (
     "session_ref" TEXT PRIMARY KEY,
     "key_hash" TEXT NOT NULL,

@@ -44,14 +44,14 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
     environment: integration-license
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
         suite: ${{ fromJSON((inputs.suite || 'all') == 'all' && '["providers","extensions","accounting","management","management-replica","database","database-replica","mcp","security","cost","sdk","browser"]' || format('["{0}"]', inputs.suite)) }}
     env:
       UV_PYTHON: "3.12"
-      INTEGRATION_WORKERS: ${{ inputs.workers || '4' }}
+      INTEGRATION_WORKERS: ${{ matrix.suite == 'browser' && '1' || inputs.workers || '2' }}
     services:
       postgres:
         image: postgres:16@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5
@@ -166,7 +166,7 @@ jobs:
           (cd ui/litellm-dashboard && NEXT_TELEMETRY_DISABLED=1 npm run build)
 
       - name: Run integration contracts
-        timeout-minutes: 110
+        timeout-minutes: 170
         env:
           SUITE: ${{ matrix.suite }}
           INTEGRATION_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
