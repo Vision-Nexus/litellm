@@ -6,7 +6,7 @@ import logging
 import os
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, cast  # noqa: TID251  # Generated Prisma raw-query types lack an async structural interface.
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI

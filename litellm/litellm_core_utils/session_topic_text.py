@@ -7,7 +7,7 @@ import re
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from types import MappingProxyType
-from typing import Final, Protocol, cast
+from typing import Final, Protocol, cast  # noqa: TID251  # langdetect has no typed factory interface.
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -30,6 +30,7 @@ _IDENTIFIER: Final = re.compile(
 _CODE: Final = re.compile(r"```[\s\S]*?(?:```|$)|`[^`]*`")
 _PRINTABLE_TOPIC: Final = re.compile(r"[A-Za-z][A-Za-z0-9 ,.'()+/#&:-]{0,49}")
 _OBJECT_MAPPING: Final = TypeAdapter(Mapping[str, object])
+_OBJECT_SEQUENCE: Final = TypeAdapter(Sequence[object])
 _EMPTY: Final[Mapping[str, object]] = MappingProxyType({})
 
 
@@ -91,7 +92,7 @@ def _content_text(content: object) -> str:
     if isinstance(content, str):
         return content[:8192]
     if isinstance(content, Sequence) and not isinstance(content, (str, bytes)):
-        sequence: Final = cast(Sequence[object], content)  # cast-ok: runtime-checked sequence with opaque elements
+        sequence: Final = _OBJECT_SEQUENCE.validate_python(content)
         parts: Final = tuple(object_mapping(part) for part in sequence[:16])
         normalized: Final = [
             {"type": "text", "text": str(part["text"])[:8192]}
@@ -108,7 +109,7 @@ def latest_user_text(data: Mapping[str, object]) -> str:
         return sanitize_input(messages[:8192])
     if not isinstance(messages, Sequence) or isinstance(messages, (str, bytes)):
         return ""
-    sequence: Final = cast(Sequence[object], messages)  # cast-ok: runtime-checked sequence with opaque elements
+    sequence: Final = _OBJECT_SEQUENCE.validate_python(messages)
     users: Final = tuple(object_mapping(message) for message in sequence[-128:])
     last: Final = next((message for message in reversed(users) if message.get("role") == "user"), _EMPTY)
     return sanitize_input(_content_text(last.get("content")))

@@ -1,4 +1,4 @@
-from typing import Annotated, TypeAlias, cast
+from typing import Annotated, TypeAlias, cast  # noqa: TID251  # Generated Prisma raw-query types lack an async structural interface.
 
 from fastapi import Depends
 

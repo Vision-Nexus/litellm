@@ -47,10 +47,10 @@ class TopicEngine:
             return False
         try:
             self.queue.put_nowait(TopicJob(scope=scope, text=text, enqueued_at=self.clock()))
-            return True
         except asyncio.QueueFull:
             self.capacity_skips += 1
             return False
+        return True
 
     async def stop(self) -> None:
         self.stopping = True
