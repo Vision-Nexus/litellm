@@ -83,6 +83,7 @@ RUN uv sync --frozen --no-install-project --no-install-workspace --no-default-gr
     --extra proxy-runtime \
     --group admin-mcp \
     --extra extra_proxy \
+    --extra session_topics \
     --extra semantic-router \
     --extra saml \
     --extra bedrock-realtime \
@@ -106,6 +107,7 @@ RUN uv sync --frozen --no-default-groups --no-editable \
     --extra proxy-runtime \
     --group admin-mcp \
     --extra extra_proxy \
+    --extra session_topics \
     --extra semantic-router \
     --extra saml \
     --extra bedrock-realtime \

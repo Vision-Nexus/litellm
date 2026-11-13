@@ -587,6 +587,8 @@ class LiteLLMRoutes(enum.Enum):
         *MODEL_LIST_ROUTES,
         "/sso/get/ui_settings",
         "/get/user_banner",
+        "/session_topics",
+        "/session_topics/overview",
         "/get/latest_release_info",
     ]
 

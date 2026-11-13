@@ -316,6 +316,7 @@ const menuGroups: MenuGroup[] = [
         label: "Cost Optimization",
       },
       { key: "logs", page: "logs", label: "Logs", icon: <Activity {...ICON} /> },
+      { key: "session-topics", page: "session-topics", label: "Session topics", icon: <Tags {...ICON} /> },
       {
         key: "lens",
         page: "lens",

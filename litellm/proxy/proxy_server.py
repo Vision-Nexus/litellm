@@ -805,6 +805,8 @@ from litellm.proxy.management_endpoints.ui_sso import router as ui_sso_router
 from litellm.proxy.management_endpoints.user_agent_analytics_endpoints import (
     router as user_agent_analytics_router,
 )
+from litellm.proxy.management_endpoints.session_topic_endpoints import router as session_topic_router
+from litellm.proxy.hooks.session_topics import session_topics_lifespan, stop_session_topics
 from litellm.proxy.management_endpoints.workflow_management_endpoints import (
     router as workflow_management_router,
 )
@@ -1854,6 +1856,8 @@ async def _proxy_lifespan(app: FastAPI, resources: AsyncExitStack) -> AsyncGener
         await initialize_shared_aiohttp_session()
     )
 
+    await resources.enter_async_context(session_topics_lifespan(app, prisma_client, general_settings))
+
     model_info_refresh_disabled: Final = (
         "disable_model_info_refresh" in general_settings and general_settings["disable_model_info_refresh"] is True
     )
@@ -1929,6 +1933,7 @@ async def _proxy_lifespan(app: FastAPI, resources: AsyncExitStack) -> AsyncGener
                     await GracefulShutdownManager.wait_for_drain()
         finally:
             # Shutdown event - close shared aiohttp session
+            await stop_session_topics(app)
             if shared_aiohttp_session is not None:
                 try:
                     await shared_aiohttp_session.close()
@@ -21886,6 +21891,7 @@ app.include_router(fallback_management_router)
 app.include_router(cache_settings_router)
 app.include_router(coordination_redis_settings_router)
 app.include_router(user_agent_analytics_router)
+app.include_router(session_topic_router)
 app.include_router(gateway_request_router)
 app.include_router(request_error_router)
 app.include_router(telemetry_router)

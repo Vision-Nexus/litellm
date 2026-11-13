@@ -15479,6 +15479,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/session_topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Session Topics */
+        get: operations["list_session_topics_session_topics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session_topics/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Topic Overview */
+        get: operations["session_topic_overview_session_topics_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -48188,6 +48222,90 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** TopicOverview */
+        TopicOverview: {
+            /** Pending */
+            pending: number;
+            /** Ready */
+            ready: number;
+            /** Sessions */
+            sessions: number;
+            /** Unavailable */
+            unavailable: number;
+            /** Usage */
+            usage: components["schemas"]["TopicUsage"][];
+        };
+        /** TopicPage */
+        TopicPage: {
+            /** Items */
+            items: components["schemas"]["TopicRecord"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** TopicRecord */
+        TopicRecord: {
+            /** Attempts */
+            attempts: number;
+            /** Category */
+            category?: ("engineering" | "operations" | "data_analysis" | "writing" | "general" | "other" | "unknown") | null;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /** Key Hash */
+            key_hash: string;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /** Model */
+            model: string;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Session Ref */
+            session_ref: string;
+            status: components["schemas"]["TopicState"];
+            /** Team Id */
+            team_id?: string | null;
+            /** Topic */
+            topic?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * TopicState
+         * @enum {string}
+         */
+        TopicState: "pending" | "ready" | "insufficient_input" | "invalid_output" | "upstream_failure" | "capacity" | "expired";
+        /** TopicUsage */
+        TopicUsage: {
+            /** Failed */
+            failed: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "business" | "session_topic" | "other";
+            /** Requests */
+            requests: number;
+            /** Spend */
+            spend: number;
+            /** Successful */
+            successful: number;
+            /** Tokens */
+            tokens: number;
+        };
         /** Trace */
         Trace: {
             /** Agents */
@@ -72756,6 +72874,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionLogoutResponse"];
+                };
+            };
+        };
+    };
+    list_session_topics_session_topics_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_topic_overview_session_topics_overview_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
