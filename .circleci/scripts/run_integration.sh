@@ -5,6 +5,14 @@ suite="${1:?integration suite required}"
 mode="${2:-standard}"
 side="${3:-}"
 requested_workers="${INTEGRATION_WORKERS:-}"
+selected_nodes=()
+if [ -n "${INTEGRATION_TEST_NODES:-}" ]; then
+  if [ "$suite" = browser ] || [ "${CIRCLE_NODE_TOTAL:-1}" -gt 1 ]; then
+    echo "Focused paths require an unsharded Python integration group" >&2
+    exit 2
+  fi
+  read -r -a selected_nodes <<< "$INTEGRATION_TEST_NODES"
+fi
 license_env=()
 if [ -n "${LITELLM_LICENSE:-}" ]; then
   license_env=("LITELLM_LICENSE=$LITELLM_LICENSE")
@@ -271,7 +279,7 @@ env -i PATH="$PATH" HOME="$HOME" PYTHONPATH="$PYTHONPATH" \
   INTEGRATION_ROUTING="$INTEGRATION_ROUTING" \
   MCP_TEST_PEER_PYTHON="${MCP_TEST_PEER_PYTHON:-}" \
   .venv/bin/python tests/integration/run.py "$suite" --results "$results" \
-  "${shard_arguments[@]}"
+  "${shard_arguments[@]}" "${selected_nodes[@]}"
 
 if [ "${INTEGRATION_COVERAGE:-0}" = 1 ]; then
   for covered_pid in "$proxy_pid" "$peer_pid"; do

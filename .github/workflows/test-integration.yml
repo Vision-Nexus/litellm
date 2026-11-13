@@ -1,4 +1,5 @@
 name: integration
+run-name: integration ${{ inputs.suite || 'all' }} (${{ inputs.test_nodes && 'focused' || 'full' }})
 
 on:
   pull_request:
@@ -30,12 +31,16 @@ on:
         description: Workers per group, blank keeps each group's default
         type: string
         default: ""
+      test_nodes:
+        description: Optional space-separated pytest paths in one group, blank runs the full selection
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.label.name }}-${{ inputs.suite }}-${{ inputs.workers }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.label.name }}-${{ inputs.suite }}-${{ inputs.workers }}-${{ inputs.test_nodes && 'focused' || 'full' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -77,6 +82,16 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
+      - name: Validate selection
+        env:
+          REQUESTED_SUITE: ${{ inputs.suite || 'all' }}
+          INTEGRATION_TEST_NODES: ${{ inputs.test_nodes }}
+        run: |
+          if [ -n "$INTEGRATION_TEST_NODES" ] && { [ "$REQUESTED_SUITE" = all ] || [ "$REQUESTED_SUITE" = browser ]; }; then
+            echo "Focused paths require one non-browser group" >&2
+            exit 2
+          fi
+
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
@@ -169,6 +184,7 @@ jobs:
         timeout-minutes: 170
         env:
           SUITE: ${{ matrix.suite }}
+          INTEGRATION_TEST_NODES: ${{ inputs.test_nodes }}
           INTEGRATION_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
           INTEGRATION_REDIS_CONTAINER: ${{ job.services.redis.id }}
           LITELLM_LICENSE: ${{ secrets.LITELLM_LICENSE }}
