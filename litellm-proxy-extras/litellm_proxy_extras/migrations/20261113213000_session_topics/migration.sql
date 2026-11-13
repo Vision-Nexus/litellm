@@ -1,6 +1,6 @@
 SET LOCAL lock_timeout = '10s';
 
-CREATE TABLE "LiteLLM_SessionTopic" (
+CREATE TABLE IF NOT EXISTS "LiteLLM_SessionTopic" (
     "session_ref" TEXT PRIMARY KEY,
     "key_hash" TEXT NOT NULL,
     "user_id" TEXT,
@@ -23,11 +23,11 @@ CREATE TABLE "LiteLLM_SessionTopic" (
     CHECK ("status" IN ('pending','ready','insufficient_input','invalid_output','upstream_failure','capacity','expired'))
 );
 
-CREATE INDEX "LiteLLM_SessionTopic_user_id_last_seen_idx" ON "LiteLLM_SessionTopic" ("user_id", "last_seen");
-CREATE INDEX "LiteLLM_SessionTopic_key_hash_last_seen_idx" ON "LiteLLM_SessionTopic" ("key_hash", "last_seen");
-CREATE INDEX "LiteLLM_SessionTopic_last_seen_idx" ON "LiteLLM_SessionTopic" ("last_seen");
+CREATE INDEX IF NOT EXISTS "LiteLLM_SessionTopic_user_id_last_seen_idx" ON "LiteLLM_SessionTopic" ("user_id", "last_seen");
+CREATE INDEX IF NOT EXISTS "LiteLLM_SessionTopic_key_hash_last_seen_idx" ON "LiteLLM_SessionTopic" ("key_hash", "last_seen");
+CREATE INDEX IF NOT EXISTS "LiteLLM_SessionTopic_last_seen_idx" ON "LiteLLM_SessionTopic" ("last_seen");
 
-CREATE TABLE "LiteLLM_SessionTopicReadAudit" (
+CREATE TABLE IF NOT EXISTS "LiteLLM_SessionTopicReadAudit" (
     "id" BIGSERIAL PRIMARY KEY,
     "actor_ref" TEXT NOT NULL,
     "operation" TEXT NOT NULL,
@@ -35,9 +35,9 @@ CREATE TABLE "LiteLLM_SessionTopicReadAudit" (
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX "LiteLLM_SessionTopicReadAudit_created_at_idx" ON "LiteLLM_SessionTopicReadAudit" ("created_at");
+CREATE INDEX IF NOT EXISTS "LiteLLM_SessionTopicReadAudit_created_at_idx" ON "LiteLLM_SessionTopicReadAudit" ("created_at");
 
-CREATE TABLE "LiteLLM_SessionTopicWorkerKey" (
+CREATE TABLE IF NOT EXISTS "LiteLLM_SessionTopicWorkerKey" (
     "key_hash" TEXT PRIMARY KEY CHECK ("key_hash" ~ '^[a-f0-9]{64}$'),
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

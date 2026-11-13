@@ -18,7 +18,7 @@ Raw input is never written to the topic tables or a durable task queue. The queu
 
 Build the fork's Dockerfile, which installs the `session_topics` extra. Source installations should use `uv sync --frozen --extra proxy --extra extra_proxy --extra session_topics` so the Prisma and other runtime versions match the repository lockfile. Pin the resulting image digest. Do not deploy a floating branch or tag.
 
-The canonical Prisma migration is `litellm-proxy-extras/litellm_proxy_extras/migrations/20261113213000_session_topics/migration.sql`. It adds three small tables without rewriting existing request logs. The matching schema is present in both Prisma schema files. Apply migrations through the normal release process before enabling the feature.
+The canonical Prisma migration is `litellm-proxy-extras/litellm_proxy_extras/migrations/20261113213000_session_topics/migration.sql`. It adds three small tables without rewriting existing request logs. The matching schema is present in all three Prisma schema copies. Apply migrations through the normal release process before enabling the feature.
 
 Configure a dedicated model alias called `session-topic-luna`, pointing to the approved `gpt-6-luna` deployment. Configure its existing provider credentials through the normal secret mechanism. No provider credentials are needed by the topic generator itself. Do not configure automatic fallbacks for this alias.
 
@@ -59,6 +59,8 @@ The original request ledger remains intact. A failed or timed-out summary can st
 Start with an isolated database and Redis instance. Test two proxy workers, all client API formats in use, streaming, duplicate requests, same session identifiers under different users, invalid keys, missing session identifiers, queue saturation, timeouts and restart. Seed credentials and personal-data canaries, then inspect topic tables, proxy logs, traces and caches for them. Confirm that an internal summary request does not enqueue another topic.
 
 The focused tests live in `tests/unit/litellm_core_utils/test_session_topic_text.py`, `tests/unit/proxy/hooks/test_session_topic_client.py`, `tests/integration/spend/test_session_topics.py` and `ui/litellm-dashboard/src/components/session_topics/SessionTopicsPanel.integration.test.tsx`. The PostgreSQL contract test accepts `SESSION_TOPIC_TEST_DATABASE_URL`, otherwise it uses the integration harness's `DATABASE_URL`, and creates a disposable schema. Windows runs need a selector event loop for the Psycopg async test adapter.
+
+The accounting integration group also runs `tests/integration/spend/test_session_topics_gateway.py`. It starts a private PostgreSQL database and two proxy workers, provisions synthetic virtual keys, and drives Chat Completions, Responses and Messages with and without streaming. A loopback summary relay sends summary calls back through the same proxy's authentication and accounting. The provider replies are scripted, so this verifies gateway behavior but does not replace real-Luna acceptance. All compilation and test execution for this change runs in GitHub Actions.
 
 Validate the actual Luna deployment with synthetic or explicitly approved redacted inputs before any employee traffic is enabled. Verify that the gateway forwards the schema and privacy parameters rather than silently dropping them. Start with a few explicit key hashes, inspect generation failures and cost, and expand only after acceptance.
 

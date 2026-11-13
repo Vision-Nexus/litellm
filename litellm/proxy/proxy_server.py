@@ -674,6 +674,7 @@ from litellm.proxy.hooks.proxy_track_cost_callback import (  # noqa: F401, RUF10
     _ProxyDBLogger,  # pyright: ignore[reportPrivateUsage,reportUnusedImport]  # backwards-compatible package export
     run_spend_event,
 )
+from litellm.proxy.hooks.session_topics import session_topics_lifespan, stop_session_topics
 from litellm.proxy.image_endpoints.endpoints import router as image_router
 from litellm.proxy.lens.adapter import router as lens_router
 from litellm.proxy.lens.internal import LensInternalMiddleware
@@ -783,6 +784,7 @@ from litellm.proxy.management_endpoints.router_settings_endpoints import (
 from litellm.proxy.management_endpoints.session_endpoints import (
     router as session_management_router,
 )
+from litellm.proxy.management_endpoints.session_topic_endpoints import router as session_topic_router
 from litellm.proxy.management_endpoints.sso.saml_sso import SAML_AUTHN_REQUEST_TTL_SECONDS
 from litellm.proxy.management_endpoints.subscription_accounts import (
     router as subscription_accounts_router,
@@ -805,8 +807,6 @@ from litellm.proxy.management_endpoints.ui_sso import router as ui_sso_router
 from litellm.proxy.management_endpoints.user_agent_analytics_endpoints import (
     router as user_agent_analytics_router,
 )
-from litellm.proxy.management_endpoints.session_topic_endpoints import router as session_topic_router
-from litellm.proxy.hooks.session_topics import session_topics_lifespan, stop_session_topics
 from litellm.proxy.management_endpoints.workflow_management_endpoints import (
     router as workflow_management_router,
 )
