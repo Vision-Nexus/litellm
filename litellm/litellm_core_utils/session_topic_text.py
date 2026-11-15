@@ -8,13 +8,16 @@ from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from importlib.resources import files
 from types import MappingProxyType
-from typing import Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final
 
 from pydantic import TypeAdapter, ValidationError
 
 from litellm.constants import SESSION_ID_GENERATED_METADATA_KEY
 from litellm.litellm_core_utils.llm_judge import extract_text_from_content
 from litellm.models.session_topics import TopicResult, TopicScope
+
+if TYPE_CHECKING:
+    from langdetect.detector_factory import DetectorFactory
 
 _SESSION: Final = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 _HASH: Final = re.compile(r"^[a-f0-9]{64}$")
@@ -123,37 +126,18 @@ def sanitize_input(text: str) -> str:
     return " ".join(without_identifiers.split())[:8192]
 
 
-class _LanguageDetector(Protocol):
-    def append(self, text: str) -> None: ...
-
-    def detect(self) -> str: ...
-
-
-@runtime_checkable
-class _LanguageFactory(Protocol):
-    def load_profile(self, directory: str) -> None: ...
-
-    def set_seed(self, seed: int) -> None: ...
-
-    def create(self) -> _LanguageDetector: ...
-
-
 @lru_cache(maxsize=1)
-def _language_factory() -> _LanguageFactory:
-    from langdetect.detector_factory import DetectorFactory  # pyright: ignore[reportMissingTypeStubs]  # Untyped API.
+def _language_factory() -> DetectorFactory:
+    from langdetect.detector_factory import DetectorFactory
 
-    factory: Final[object] = DetectorFactory()
-    if not isinstance(factory, _LanguageFactory):
-        raise TypeError("Session topic language detector has an incompatible interface")
+    factory: Final = DetectorFactory()
     factory.load_profile(str(files("langdetect").joinpath("profiles")))
     factory.set_seed(0)
     return factory
 
 
 def validate_topic(raw: str) -> TopicResult | None:
-    from langdetect.lang_detect_exception import (  # pyright: ignore[reportMissingTypeStubs]  # No stubs.
-        LangDetectException,
-    )
+    from langdetect.lang_detect_exception import LangDetectException
 
     try:
         result: Final = TopicResult.model_validate_json(raw)

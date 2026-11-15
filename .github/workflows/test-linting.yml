@@ -123,6 +123,18 @@ jobs:
           fi
           xargs uv run --no-sync ruff format --check --exclude '/enterprise/' < "$RUNNER_TEMP/ruff_format_files.txt"
 
+      - name: Check session topic type boundaries
+        if: ${{ !cancelled() && steps.changes.outputs.decision != 'skip' && steps.prisma.outcome == 'success' }}
+        run: |
+          uv run --no-sync basedpyright --pythonpath .venv/bin/python \
+            litellm/models/session_topics.py \
+            litellm/litellm_core_utils/session_topic_text.py \
+            litellm/proxy/hooks/session_topic_client.py \
+            litellm/proxy/hooks/session_topic_engine.py \
+            litellm/proxy/hooks/session_topics.py \
+            litellm/proxy/management_endpoints/session_topic_endpoints.py \
+            litellm/repositories/session_topics_repository.py
+
       - name: Debug - Check file state
         if: ${{ !cancelled() && steps.changes.outputs.decision != 'skip' && steps.prisma.outcome == 'success' }}
         run: |
