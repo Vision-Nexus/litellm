@@ -18,7 +18,9 @@ _Auth: TypeAlias = Annotated[UserAPIKeyAuth, Depends(user_api_key_auth)]
 
 
 def topic_runtime(request: Request) -> SessionTopicRuntime:
-    runtime: Final = getattr(request.app.state, "session_topics", None)
+    application: Final[object] = request.app  # pyright: ignore[reportAny]  # Starlette exposes an untyped app.
+    state: Final[object] = getattr(application, "state", None)
+    runtime: Final = getattr(state, "session_topics", None)
     if not isinstance(runtime, SessionTopicRuntime) or runtime.closed:
         raise HTTPException(status_code=503, detail="Session topics are disabled")
     return runtime
