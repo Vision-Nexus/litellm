@@ -139,6 +139,7 @@ from litellm.litellm_core_utils.served_output_texts import (
     SERVED_OUTPUT_TEXTS_KEY,
     overlay_served_output_texts,
 )
+from litellm.litellm_core_utils.session_topic_cost import session_topic_costs_enabled
 from litellm.litellm_core_utils.thread_pool_executor import executor
 from litellm.llms.base_llm.ocr.transformation import OCRResponse
 from litellm.llms.base_llm.search.transformation import SearchResponse
@@ -7117,7 +7118,7 @@ class StandardLoggingPayloadSetup:
                     model=pricing_model_name or model_cost_name,
                     custom_llm_provider=custom_llm_provider,
                     api_base=api_base,
-                    preserve_unset_costs=os.getenv("LITELLM_SESSION_TOPICS_ENABLED", "false").lower() == "true",
+                    preserve_unset_costs=session_topic_costs_enabled(),
                 )
                 model_cost_information = StandardLoggingModelInformation(
                     model_map_key=model_cost_name,

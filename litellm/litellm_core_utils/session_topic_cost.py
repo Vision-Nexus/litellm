@@ -137,6 +137,11 @@ def cost_status(payload: Mapping[str, object] | None) -> TopicCostStatus:
     return "unknown"
 
 
+def session_topic_costs_enabled(environment: Mapping[str, str] | None = None) -> bool:
+    env: Final = os.environ if environment is None else environment
+    return env.get("LITELLM_SESSION_TOPICS_ENABLED", "false").lower() == "true"
+
+
 def topic_cost_log_metadata(
     metadata: object,
     key_hash: object,
@@ -145,7 +150,7 @@ def topic_cost_log_metadata(
     environment: Mapping[str, str] | None = None,
 ) -> TopicCostLogMetadata | None:
     env: Final = os.environ if environment is None else environment
-    if env.get("LITELLM_SESSION_TOPICS_ENABLED", "false").lower() != "true":
+    if not session_topic_costs_enabled(env):
         return None
     secret: Final = SecretStr(env.get("LITELLM_SESSION_TOPICS_IDENTITY_SECRET", ""))
     if len(secret.get_secret_value()) < 32:
