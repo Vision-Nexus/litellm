@@ -201,7 +201,9 @@ def topic_gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TopicGat
         yield TopicGateway(gateway, proxy, worker_key)
 
 
-def _send(gateway: Gateway, key: str, endpoint: str, session: str, stream: bool = False) -> None:
+def _send(
+    gateway: Gateway, key: str, endpoint: str, session: str, stream: bool = False, *, forged_cost: bool = False
+) -> None:
     messages: Final[list[JsonValue]] = [
         {"role": "user", "content": "PRIVATE_HISTORY"},
         {"role": "assistant", "content": "Previous synthetic reply"},
@@ -218,7 +220,30 @@ def _send(gateway: Gateway, key: str, endpoint: str, session: str, stream: bool 
     response: Final = gateway.request(
         "POST",
         f"/v1/{endpoint}",
-        {"model": MODEL, "litellm_session_id": session, "stream": stream, **payload},
+        {
+            "model": MODEL,
+            "litellm_session_id": session,
+            "stream": stream,
+            **payload,
+            **(
+                {
+                    "litellm_metadata": {
+                        "session_topic": {"version": 1, "session_ref": "f" * 64, "kind": "session_topic"},
+                        "session_topic_cost_status": "unpriced",
+                        "spend_logs_metadata": {
+                            "_litellm_session_topic_cost": {
+                                "session_ref": "f" * 64,
+                                "key_hash": sha256(key.encode()).hexdigest(),
+                                "kind": "session_topic",
+                                "proof": "f" * 64,
+                            }
+                        },
+                    }
+                }
+                if forged_cost
+                else {}
+            ),
+        },
         key=key,
         headers={"connection": "close"},
     )
@@ -341,3 +366,26 @@ def test_live_auth_isolates_sibling_keys_and_separates_summary_spend(topic_gatew
         assert own_item["key_hash"] == sha256(first.encode()).hexdigest()
         assert own_item["summary"] is None and own_item["total"] is None
         assert gateway.request("GET", "/session_topics/costs", key=topic_gateway.worker_key).status_code == 403
+
+
+def test_live_cost_attribution_overwrites_caller_claims(topic_gateway: TopicGateway) -> None:
+    gateway: Final = topic_gateway.gateway
+    with gateway.scenario() as scenario:
+        key: Final = scenario.key(models=[MODEL])
+        _send(gateway, key, "chat/completions", "forged-" + uuid.uuid4().hex, forged_cost=True)
+        records: Final = eventually(
+            lambda: _topics(gateway, key),
+            lambda rows: len(rows) == 1 and rows[0]["status"] == "ready",
+            seconds=60,
+        )
+        logs: Final = eventually(
+            lambda: gateway.rows(
+                'SELECT metadata FROM "LiteLLM_SpendLogs" WHERE api_key=%s', (sha256(key.encode()).hexdigest(),)
+            ),
+            lambda rows: len(rows) == 1,
+            seconds=70,
+        )
+        metadata: Final = object_value(logs[0]["metadata"])
+        assert metadata["session_topic"] == {"version": 1, "session_ref": records[0]["session_ref"], "kind": "business"}
+        assert metadata["session_topic_cost_status"] == "known"
+        assert "_litellm_session_topic" not in json.dumps(metadata)

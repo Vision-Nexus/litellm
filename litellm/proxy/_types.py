@@ -590,6 +590,7 @@ class LiteLLMRoutes(enum.Enum):
         "/get/user_banner",
         "/session_topics",
         "/session_topics/overview",
+        "/session_topics/costs",
         "/get/latest_release_info",
     ]
 
