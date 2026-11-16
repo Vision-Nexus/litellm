@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryOptions } from "@tanstack/react-query";
 import { createParser, parseAsStringLiteral, useQueryStates } from "nuqs";
 import { apiClient } from "@/components/networking";
 import { Button } from "@/components/ui/button";
@@ -77,7 +77,7 @@ export default function SessionTopicCostsPanel({
   viewerScope: string;
 }) {
   const [query, setQuery] = useQueryStates(queryParsers);
-  const costs = useQuery<CostPage>({
+  const queryOptions: UseQueryOptions<CostPage> = {
     queryKey: ["session-topic-costs", viewerScope, query.cost_group, query.cost_days, query.cost_offset],
     queryFn: ({ signal }) =>
       apiClient.get<CostPage>("/session_topics/costs", {
@@ -87,7 +87,8 @@ export default function SessionTopicCostsPanel({
       }),
     retry: false,
     staleTime: 30000,
-  });
+  };
+  const costs = useQuery(queryOptions);
   const disabled = costs.error instanceof ApiError && costs.error.status === 503;
 
   return (

@@ -106,11 +106,7 @@ def without_topic_proofs(metadata: object) -> dict[str, object] | None:  # mutab
         parsed: Final = _MAPPING.validate_python(metadata)
     except ValidationError:
         return None
-    return {
-        name: value
-        for name, value in parsed.items()
-        if name not in (TOPIC_PARENT_CONTEXT, TOPIC_COST_CONTEXT)
-    }
+    return {name: value for name, value in parsed.items() if name not in (TOPIC_PARENT_CONTEXT, TOPIC_COST_CONTEXT)}
 
 
 def cost_status(payload: Mapping[str, object] | None) -> TopicCostStatus:

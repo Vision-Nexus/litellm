@@ -53,13 +53,13 @@ describe("session cost details", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("opens Costs and displays incomplete amounts without losing unassociated charges", async () => {
+    const emptyOverview = { sessions: 0, ready: 0, pending: 0, unavailable: 0, usage: [] };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = input instanceof Request ? input.url : String(input);
         if (url.includes("/costs")) return Response.json(costPage);
-        if (url.includes("/overview"))
-          return Response.json({ sessions: 0, ready: 0, pending: 0, unavailable: 0, usage: [] });
+        if (url.includes("/overview")) return Response.json(emptyOverview);
         return Response.json({ items: [], limit: 50, offset: 0 });
       }),
     );
@@ -86,7 +86,7 @@ describe("session cost details", () => {
     expect(screen.getByRole("combobox", { name: "Time window" })).toHaveValue("30");
     expect(await screen.findByText("Page 2")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Group by" }), { target: { value: "topic" } });
-    await waitFor(() => expect(screen.getByText("Page 1")).toBeInTheDocument());
+    expect(await screen.findByText("Page 1")).toBeInTheDocument();
     expect(onUrlUpdate).toHaveBeenLastCalledWith(
       expect.objectContaining({ queryString: "?view=costs&cost_group=topic&cost_days=30" }),
     );
@@ -105,16 +105,15 @@ describe("session cost details", () => {
   });
 
   it("does not turn private summary costs into zero for ordinary readers", async () => {
+    const ownCosts: CostPage = {
+      ...costPage,
+      items: costPage.items.map((item) => ({ ...item, summary: null, total: null })),
+      totals: [{ kind: "business", costs: business }],
+      unassociated: [],
+    };
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        Response.json({
-          ...costPage,
-          items: costPage.items.map((item) => ({ ...item, summary: null, total: null })),
-          totals: [{ kind: "business", costs: business }],
-          unassociated: [],
-        }),
-      ),
+      vi.fn(async () => Response.json(ownCosts)),
     );
     renderWithProviders(<SessionTopicsPanel accessToken="test-only-token" viewerScope="user-one" />, {
       searchParams: "view=costs",
