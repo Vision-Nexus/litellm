@@ -28,7 +28,7 @@ on:
           - browser
         default: all
       workers:
-        description: Workers per group, blank keeps each group's default
+        description: Workers per shard (1-4), blank uses 2 and browser always uses 1
         type: string
         default: ""
       test_nodes:
@@ -44,19 +44,58 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  integration:
-    name: integration ${{ matrix.suite }}
+  plan:
+    name: integration shard plan
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      qualification: ${{ steps.plan.outputs.qualification }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: ./.github/actions/setup-uv-with-retries
+        with:
+          version: "0.10.9"
+
+      - name: Test the planner and shard qualification
+        timeout-minutes: 3
+        run: |
+          uv run --no-project --with pytest==9.0.3 --with pydantic==2.13.4 \
+            python -m pytest --noconftest -o addopts= tests/unit/integration_support/test_github_shards.py
+
+      - name: Plan isolated shards
+        id: plan
+        env:
+          REQUESTED_SUITE: ${{ inputs.suite || 'all' }}
+          REQUESTED_WORKERS: ${{ inputs.workers }}
+          INTEGRATION_TEST_NODES: ${{ inputs.test_nodes }}
+        run: python -m tests.integration._support.github_shards matrix >> "$GITHUB_OUTPUT"
+
+  integration:
+    name: ${{ matrix.suite == 'browser' && 'integration browser' || format('integration {0} shard {1}', matrix.suite, matrix.index) }}
+    needs: plan
     environment: integration-license
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     strategy:
       fail-fast: false
-      matrix:
-        suite: ${{ fromJSON((inputs.suite || 'all') == 'all' && '["providers","extensions","accounting","management","management-replica","database","database-replica","mcp","security","cost","sdk","browser"]' || format('["{0}"]', inputs.suite)) }}
+      max-parallel: 12
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       UV_PYTHON: "3.12"
-      INTEGRATION_WORKERS: ${{ matrix.suite == 'browser' && '1' || inputs.workers || '2' }}
+      INTEGRATION_WORKERS: ${{ matrix.workers }}
+      INTEGRATION_CASE_SHARDS: ${{ matrix.count }}
+      INTEGRATION_CASE_SHARD_INDEX: ${{ matrix.index }}
     services:
       postgres:
         image: postgres:16@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5
@@ -82,16 +121,6 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      - name: Validate selection
-        env:
-          REQUESTED_SUITE: ${{ inputs.suite || 'all' }}
-          INTEGRATION_TEST_NODES: ${{ inputs.test_nodes }}
-        run: |
-          if [ -n "$INTEGRATION_TEST_NODES" ] && { [ "$REQUESTED_SUITE" = all ] || [ "$REQUESTED_SUITE" = browser ]; }; then
-            echo "Focused paths require one non-browser group" >&2
-            exit 2
-          fi
-
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
@@ -194,15 +223,15 @@ jobs:
             *) bash .circleci/scripts/run_integration.sh "$SUITE" ;;
           esac
 
-      - name: Verify every case ran exactly once
+      - name: Preserve the shard execution record
         if: ${{ !cancelled() && matrix.suite != 'browser' }}
         timeout-minutes: 2
         run: |
           record="$(find test-results -mindepth 2 -maxdepth 2 -name execution.json -print -quit)"
           test -n "$record"
-          mkdir -p "$RUNNER_TEMP/shards/0"
-          cp "$record" "$RUNNER_TEMP/shards/0/execution.json"
-          .venv/bin/python -m tests.integration._support.sharding "$RUNNER_TEMP/shards" --shards 1
+          mkdir -p "$RUNNER_TEMP/shard-execution"
+          cp "$record" "$RUNNER_TEMP/shard-execution/execution.json"
+          cp "${record%/*}/exit-status.txt" "$RUNNER_TEMP/shard-execution/exit-status.txt"
 
       - name: Report MCP coverage
         if: ${{ !cancelled() && matrix.suite == 'mcp' }}
@@ -229,6 +258,56 @@ jobs:
         timeout-minutes: 10
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
-          name: integration-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: integration-${{ matrix.suite }}-${{ matrix.index }}-of-${{ matrix.count }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           retention-days: 14
+
+      - name: Upload the shard execution record
+        if: ${{ !cancelled() && matrix.suite != 'browser' && steps.secret-scan.outcome == 'success' }}
+        timeout-minutes: 3
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: integration-execution-${{ matrix.suite }}-${{ matrix.index }}-of-${{ matrix.count }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shard-execution/
+          if-no-files-found: error
+          retention-days: 14
+
+  qualification:
+    name: integration ${{ matrix.suite }}
+    needs: [plan, integration]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && inputs.suite != 'browser' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.qualification) }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: ./.github/actions/setup-uv-with-retries
+        with:
+          version: "0.10.9"
+
+      - name: Download execution records from this attempt
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        with:
+          pattern: integration-execution-${{ matrix.suite }}-*-of-${{ matrix.count }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: shards
+
+      - name: Verify every candidate ran exactly once and passed or skipped
+        env:
+          SHARD_COUNT: ${{ matrix.count }}
+        run: |
+          uv run --no-project --with pydantic==2.13.4 \
+            python -m tests.integration._support.sharding shards --shards "$SHARD_COUNT"
+          for record in shards/*/execution.json; do
+            test "$(cat "${record%/*}/exit-status.txt")" = 0
+          done
