@@ -1,5 +1,5 @@
-ARG LITELLM_BUILD_IMAGE=cgr.dev/chainguard/wolfi-base@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7
-ARG LITELLM_RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7
+ARG LITELLM_BUILD_IMAGE=cgr.dev/chainguard/wolfi-base@sha256:833c48f1faf32c90e6f9501a2410a9aa28ceb2c594102edd4470053c30efa089
+ARG LITELLM_RUNTIME_IMAGE=cgr.dev/chainguard/wolfi-base@sha256:833c48f1faf32c90e6f9501a2410a9aa28ceb2c594102edd4470053c30efa089
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.7@sha256:240fb85ab0f263ef12f492d8476aa3a2e4e1e333f7d67fbdd923d00a506a516a
 
 FROM $UV_IMAGE AS uvbin
@@ -74,6 +74,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra proxy-runtime \
         --group admin-mcp \
         --extra extra_proxy \
+        --extra session_topics \
         --extra semantic-router \
         --extra saml \
         --python python3.13
@@ -87,6 +88,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --extra proxy-runtime \
         --group admin-mcp \
         --extra extra_proxy \
+        --extra session_topics \
         --extra semantic-router \
         --extra saml \
         --python python3.13

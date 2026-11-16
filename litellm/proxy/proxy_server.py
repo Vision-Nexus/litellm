@@ -674,6 +674,7 @@ from litellm.proxy.hooks.proxy_track_cost_callback import (  # noqa: F401, RUF10
     _ProxyDBLogger,  # pyright: ignore[reportPrivateUsage,reportUnusedImport]  # backwards-compatible package export
     run_spend_event,
 )
+from litellm.proxy.hooks.session_topics import session_topics_lifespan, stop_session_topics
 from litellm.proxy.image_endpoints.endpoints import router as image_router
 from litellm.proxy.lens.adapter import router as lens_router
 from litellm.proxy.lens.internal import LensInternalMiddleware
@@ -783,6 +784,7 @@ from litellm.proxy.management_endpoints.router_settings_endpoints import (
 from litellm.proxy.management_endpoints.session_endpoints import (
     router as session_management_router,
 )
+from litellm.proxy.management_endpoints.session_topic_endpoints import router as session_topic_router
 from litellm.proxy.management_endpoints.sso.saml_sso import SAML_AUTHN_REQUEST_TTL_SECONDS
 from litellm.proxy.management_endpoints.subscription_accounts import (
     router as subscription_accounts_router,
@@ -1854,6 +1856,9 @@ async def _proxy_lifespan(app: FastAPI, resources: AsyncExitStack) -> AsyncGener
         await initialize_shared_aiohttp_session()
     )
 
+    if os.environ.get("LITELLM_SESSION_TOPICS_ENABLED", "false").lower() == "true":
+        await resources.enter_async_context(session_topics_lifespan(app, prisma_client, general_settings_view()))
+
     model_info_refresh_disabled: Final = (
         "disable_model_info_refresh" in general_settings and general_settings["disable_model_info_refresh"] is True
     )
@@ -1929,6 +1934,7 @@ async def _proxy_lifespan(app: FastAPI, resources: AsyncExitStack) -> AsyncGener
                     await GracefulShutdownManager.wait_for_drain()
         finally:
             # Shutdown event - close shared aiohttp session
+            await stop_session_topics(app)
             if shared_aiohttp_session is not None:
                 try:
                     await shared_aiohttp_session.close()
@@ -21886,6 +21892,7 @@ app.include_router(fallback_management_router)
 app.include_router(cache_settings_router)
 app.include_router(coordination_redis_settings_router)
 app.include_router(user_agent_analytics_router)
+app.include_router(session_topic_router)
 app.include_router(gateway_request_router)
 app.include_router(request_error_router)
 app.include_router(telemetry_router)

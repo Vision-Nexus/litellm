@@ -230,7 +230,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         raise pytest.UsageError("Integration shard index must be within the positive shard count")
     files: Final = config.stash[SHARD_FILES]
     if count > 1 and files is None:
-        raise pytest.UsageError("Parallel integration runs require CircleCI's shard file selection")
+        raise pytest.UsageError("Parallel integration runs require an explicit shard file selection")
     if files is not None:
         available: Final = frozenset(item.nodeid.split("::", 1)[0] for item in owned)
         for file in sorted(files - available - config.stash.get(FAILED_COLLECTIONS, frozenset())):

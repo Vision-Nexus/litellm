@@ -64,7 +64,9 @@ from litellm.litellm_core_utils.litellm_logging import (
 from litellm.litellm_core_utils.ptu_pricing import azure_spillover
 from litellm.litellm_core_utils.safe_json_dumps import safe_dumps, strip_null_bytes
 from litellm.litellm_core_utils.sensitive_data_masker import SensitiveDataMasker
+from litellm.litellm_core_utils.session_topic_cost import topic_cost_log_metadata, without_topic_proofs
 from litellm.llms.anthropic.common_utils import resolve_used_client_oauth_token
+from litellm.models.session_topics import TopicCostLogMetadata
 from litellm.proxy._types import (
     SpendLogsMetadata,
     SpendLogsMetadataFields,
@@ -191,6 +193,8 @@ def _get_router_metadata_for_spend_log(
 
 _STAMPED_METADATA_KEYS: Final = frozenset(
     (
+        "session_topic",
+        "session_topic_cost_status",
         "router_metadata",
         "azure_spillover",
         "autorouter_savings",
@@ -240,12 +244,14 @@ def _get_spend_logs_metadata(
     used_client_oauth_token: bool | None = None,
     kubernetes_pod_routing: StandardLoggingKubernetesPodRouting | None = None,
     is_silent_experiment: bool = False,
+    topic_logging: TopicCostLogMetadata | None = None,
 ) -> SpendLogsMetadata:
     upstream_provider_metadata: Final[_UpstreamProviderMetadata] = (
         {"upstream_provider": upstream_provider} if upstream_provider is not None else {}
     )
     if metadata is None:
         return SpendLogsMetadata(
+            **(topic_logging or {}),
             user_api_key=None,
             user_api_key_alias=None,
             user_api_key_team_id=None,
@@ -304,6 +310,7 @@ def _get_spend_logs_metadata(
             {key: metadata.get(key) for key in SpendLogsMetadata.__annotations__ if key not in _STAMPED_METADATA_KEYS}
         ),
         **upstream_provider_metadata,
+        **(topic_logging or {}),
         autorouter_savings=autorouter_savings,
         autorouter_savings_estimate=autorouter_savings_estimate,
         autorouter_baseline_observation=autorouter_baseline_observation,
@@ -342,6 +349,9 @@ def _get_spend_logs_metadata(
     clean_metadata["litellm_overhead_time_ms"] = litellm_overhead_time_ms
     clean_metadata["cost_breakdown"] = cost_breakdown
     clean_metadata["litellm_call_id"] = litellm_call_id
+    clean_metadata["spend_logs_metadata"] = without_topic_proofs(
+        _OBJECT_MAPPING.validate_python(clean_metadata).get("spend_logs_metadata")
+    )
 
     return clean_metadata
 
@@ -778,6 +788,9 @@ def get_logging_payload(
     # clean up litellm metadata
     clean_metadata = _get_spend_logs_metadata(
         persisted_metadata,
+        topic_logging=topic_cost_log_metadata(
+            _OBJECT_MAPPING.validate_python(persisted_metadata), api_key, standard_logging_payload
+        ),
         is_silent_experiment=(
             standard_logging_payload is not None
             and "is_silent_experiment" in standard_logging_payload["metadata"]

@@ -2,6 +2,9 @@ import ast
 import os
 
 ALLOWED_FILES = [
+    # Session summaries own one isolated pool per app lifespan, reused across requests and closed on shutdown.
+    "../../litellm/proxy/hooks/session_topic_client.py",
+    "./litellm/proxy/hooks/session_topic_client.py",
     # Lens data traffic owns one pool per app lifespan, isolated from model traffic and closed on shutdown.
     "../../litellm/tracing/remote.py",
     "./litellm/tracing/remote.py",

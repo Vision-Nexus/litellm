@@ -4391,6 +4391,18 @@ def test_get_spend_logs_metadata_none_key_is_none():
     assert meta["user_api_key"] is None
 
 
+def test_client_cannot_stamp_topic_cost_attribution_or_price_quality() -> None:
+    supplied: Final = {
+        "session_topic": {"version": 1, "session_ref": "a" * 64, "kind": "session_topic"},
+        "session_topic_cost_status": "known",
+        "spend_logs_metadata": {"_litellm_session_topic_cost": {"proof": "forged"}, "tag": "kept"},
+    }
+    metadata: Final = _get_spend_logs_metadata(supplied)
+    assert metadata.get("session_topic") is None
+    assert metadata.get("session_topic_cost_status") is None
+    assert metadata["spend_logs_metadata"] == {"tag": "kept"}
+
+
 # ── get_logging_payload key-hash invariant tests ───────────────────────────
 
 
@@ -6973,6 +6985,8 @@ def test_spend_logs_payload(model_id: str | None):
     expected_metadata_keys: Final = SpendLogsMetadata.__annotations__.keys() - {
         "is_silent_experiment",
         "upstream_provider",
+        "session_topic",
+        "session_topic_cost_status",
     }
 
     assert "metadata" in payload
@@ -6985,6 +6999,7 @@ def test_spend_logs_payload(model_id: str | None):
     assert metadata["user_api_key_team_id"] == "custom-team-id"
     assert metadata["user_api_key_team_alias"] == "custom-team-alias"
     assert metadata["user_api_key_alias"] == "custom-key-alias"
+    assert metadata["spend_logs_metadata"] == {"hello": "world"}
 
     assert payload["custom_llm_provider"] == "azure"
 

@@ -15479,6 +15479,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/session_topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Session Topics */
+        get: operations["list_session_topics_session_topics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session_topics/costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Session Topic Costs
+         * @description Recorded session costs, with unpriced and unassociated requests kept explicit.
+         *
+         *     Internal summary costs are visible only to proxy administrators. Historical
+         *     business linkage is read-only and bounded. No provider invoice is inferred.
+         */
+        get: operations["session_topic_costs_session_topics_costs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/session_topics/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Topic Overview */
+        get: operations["session_topic_overview_session_topics_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -48188,6 +48245,185 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** TopicCostBucket */
+        TopicCostBucket: {
+            costs: components["schemas"]["TopicCostTotals"];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "business" | "session_topic" | "other";
+        };
+        /** TopicCostPage */
+        TopicCostPage: {
+            /** Days */
+            days: number;
+            /**
+             * Group By
+             * @enum {string}
+             */
+            group_by: "session" | "topic" | "key";
+            /** Items */
+            items: components["schemas"]["TopicCostRow"][];
+            /** Legacy Scan Limit */
+            legacy_scan_limit: number;
+            /** Legacy Scan Truncated */
+            legacy_scan_truncated: boolean;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Topic Retention Days */
+            topic_retention_days: number;
+            /** Total Groups */
+            total_groups: number;
+            /** Totals */
+            totals: components["schemas"]["TopicCostBucket"][];
+            /** Unassociated */
+            unassociated: components["schemas"]["TopicCostBucket"][];
+        };
+        /** TopicCostRow */
+        TopicCostRow: {
+            business: components["schemas"]["TopicCostTotals"];
+            /** Category */
+            category: string | null;
+            /** Historical Business Requests */
+            historical_business_requests: number;
+            /** Key Hash */
+            key_hash: string | null;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /** Models */
+            models: string[];
+            /** Ready Sessions */
+            ready_sessions: number;
+            /** Session Ref */
+            session_ref: string | null;
+            /** Sessions */
+            sessions: number;
+            summary: components["schemas"]["TopicCostTotals"] | null;
+            /** Topic */
+            topic: string | null;
+            total: components["schemas"]["TopicCostTotals"] | null;
+            /** User Id */
+            user_id: string | null;
+        };
+        /** TopicCostTotals */
+        TopicCostTotals: {
+            /** Amount */
+            amount: number | null;
+            /** Failed */
+            failed: number;
+            /** Recorded Spend */
+            recorded_spend: number;
+            /** Requests */
+            requests: number;
+            /** Successful */
+            successful: number;
+            /** Tokens */
+            tokens: number;
+            /** Unknown Cost Requests */
+            unknown_cost_requests: number;
+            /** Unpriced Requests */
+            unpriced_requests: number;
+        };
+        /** TopicOverview */
+        TopicOverview: {
+            /** Pending */
+            pending: number;
+            /** Ready */
+            ready: number;
+            /** Sessions */
+            sessions: number;
+            /** Unavailable */
+            unavailable: number;
+            /** Usage */
+            usage: components["schemas"]["TopicUsage"][];
+        };
+        /** TopicPage */
+        TopicPage: {
+            /** Items */
+            items: components["schemas"]["TopicRecord"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** TopicRecord */
+        TopicRecord: {
+            /** Attempts */
+            attempts: number;
+            /** Category */
+            category?: ("engineering" | "operations" | "data_analysis" | "writing" | "general" | "other" | "unknown") | null;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /** Key Hash */
+            key_hash: string;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /** Model */
+            model: string;
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Session Ref */
+            session_ref: string;
+            status: components["schemas"]["TopicState"];
+            /** Team Id */
+            team_id?: string | null;
+            /** Topic */
+            topic?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * TopicState
+         * @enum {string}
+         */
+        TopicState: "pending" | "ready" | "insufficient_input" | "invalid_output" | "upstream_failure" | "capacity" | "expired";
+        /** TopicUsage */
+        TopicUsage: {
+            /** Failed */
+            failed: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "business" | "session_topic" | "other";
+            /** Requests */
+            requests: number;
+            /** Spend */
+            spend: number;
+            /** Successful */
+            successful: number;
+            /** Tokens */
+            tokens: number;
+            /**
+             * Unknown Cost Requests
+             * @default 0
+             */
+            unknown_cost_requests: number;
+            /**
+             * Unpriced Requests
+             * @default 0
+             */
+            unpriced_requests: number;
+        };
         /** Trace */
         Trace: {
             /** Agents */
@@ -72756,6 +72992,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionLogoutResponse"];
+                };
+            };
+        };
+    };
+    list_session_topics_session_topics_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_topic_costs_session_topics_costs_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                group_by?: "session" | "topic" | "key";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicCostPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_topic_overview_session_topics_overview_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

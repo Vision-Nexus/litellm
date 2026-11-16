@@ -7421,6 +7421,8 @@ def _build_model_info(
     custom_llm_provider: str | None = None,
     api_base: str | None = None,
     api_key: str | None = None,
+    *,
+    preserve_unset_costs: bool = False,
 ) -> ModelInfo:
     supported_openai_params = litellm.get_supported_openai_params(model=model, custom_llm_provider=custom_llm_provider)
 
@@ -7429,6 +7431,7 @@ def _build_model_info(
         custom_llm_provider=custom_llm_provider,
         api_base=api_base,
         api_key=api_key,
+        preserve_unset_costs=preserve_unset_costs,
     )
 
     provider_info: Final = get_provider_info(model=model, custom_llm_provider=custom_llm_provider)
@@ -7448,8 +7451,15 @@ def _cached_get_model_info(
     model: str,
     custom_llm_provider: str | None = None,
     api_base: str | None = None,
+    *,
+    preserve_unset_costs: bool = False,
 ) -> ModelInfo:
-    return _build_model_info(model=model, custom_llm_provider=custom_llm_provider, api_base=api_base)
+    return _build_model_info(
+        model=model,
+        custom_llm_provider=custom_llm_provider,
+        api_base=api_base,
+        preserve_unset_costs=preserve_unset_costs,
+    )
 
 
 def get_model_info(
@@ -7457,6 +7467,8 @@ def get_model_info(
     custom_llm_provider: str | None = None,
     api_base: str | None = None,
     api_key: str | None = None,
+    *,
+    preserve_unset_costs: bool = False,
 ) -> ModelInfo:
     """
     Get a dict for the maximum tokens (context window), input_cost_per_token, output_cost_per_token  for a given model.
@@ -7534,8 +7546,10 @@ def get_model_info(
     # api_key is a per-caller credential, not part of the model identity, so it is
     # kept out of the cache key; explicit keys are resolved without the cache.
     if api_key is not None:
-        return _build_model_info(model, custom_llm_provider, api_base, api_key)
-    return _cached_get_model_info(model, custom_llm_provider, api_base)
+        return _build_model_info(
+            model, custom_llm_provider, api_base, api_key, preserve_unset_costs=preserve_unset_costs
+        )
+    return _cached_get_model_info(model, custom_llm_provider, api_base, preserve_unset_costs=preserve_unset_costs)
 
 
 get_model_info.cache_clear = _cached_get_model_info.cache_clear
@@ -7543,15 +7557,26 @@ get_model_info.cache_info = _cached_get_model_info.cache_info
 
 
 def get_model_info_for_pricing(
-    model: str, custom_llm_provider: str | None = None, api_base: str | None = None
+    model: str,
+    custom_llm_provider: str | None = None,
+    api_base: str | None = None,
+    *,
+    preserve_unset_costs: bool = False,
 ) -> ModelInfo:
     from litellm.litellm_core_utils.get_llm_provider_logic import declared_provider
 
     provider: Final = declared_provider(model, custom_llm_provider)
     if provider not in ("ollama", "ollama_chat"):
-        return get_model_info(model=model, custom_llm_provider=custom_llm_provider, api_base=api_base)
+        return get_model_info(
+            model=model,
+            custom_llm_provider=custom_llm_provider,
+            api_base=api_base,
+            preserve_unset_costs=preserve_unset_costs,
+        )
     try:
-        catalog: Final = get_model_info_helper(model=model, custom_llm_provider=provider, catalog_only=True)
+        catalog: Final = get_model_info_helper(
+            model=model, custom_llm_provider=provider, catalog_only=True, preserve_unset_costs=preserve_unset_costs
+        )
     except ModelNotMappedError:
         return ModelInfo(
             key=model.removeprefix(f"{provider}/"),

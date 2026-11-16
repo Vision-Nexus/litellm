@@ -5,6 +5,16 @@ suite="${1:?integration suite required}"
 mode="${2:-standard}"
 side="${3:-}"
 requested_workers="${INTEGRATION_WORKERS:-}"
+case_shards="${INTEGRATION_CASE_SHARDS:-${CIRCLE_NODE_TOTAL:-1}}"
+case_shard_index="${INTEGRATION_CASE_SHARD_INDEX:-${CIRCLE_NODE_INDEX:-0}}"
+selected_nodes=()
+if [ -n "${INTEGRATION_TEST_NODES:-}" ]; then
+  if [ "$suite" = browser ] || [ "$case_shards" -gt 1 ]; then
+    echo "Focused paths require an unsharded Python integration group" >&2
+    exit 2
+  fi
+  read -r -a selected_nodes <<< "$INTEGRATION_TEST_NODES"
+fi
 license_env=()
 if [ -n "${LITELLM_LICENSE:-}" ]; then
   license_env=("LITELLM_LICENSE=$LITELLM_LICENSE")
@@ -240,6 +250,11 @@ if [ "${CIRCLE_NODE_TOTAL:-1}" -gt 1 ]; then
   .venv/bin/python tests/integration/run.py "$suite" --list \
     | circleci tests split --split-by=timings --timings-type=filename > "$results/node-files.txt"
   shard_arguments=(--shard-files "$results/node-files.txt")
+elif [ "$case_shards" -gt 1 ]; then
+  .venv/bin/python tests/integration/run.py "$suite" --list \
+    | INTEGRATION_CASE_SHARDS="$case_shards" INTEGRATION_CASE_SHARD_INDEX="$case_shard_index" \
+      .venv/bin/python -m tests.integration._support.github_shards files > "$results/node-files.txt"
+  shard_arguments=(--shard-files "$results/node-files.txt")
 fi
 
 shared_services=()
@@ -264,14 +279,14 @@ env -i PATH="$PATH" HOME="$HOME" PYTHONPATH="$PYTHONPATH" \
   "${license_env[@]}" \
   INTEGRATION_SEED="$INTEGRATION_SEED" \
   INTEGRATION_ORDER_SEED="$INTEGRATION_ORDER_SEED" \
-  INTEGRATION_CASE_SHARDS="${CIRCLE_NODE_TOTAL:-1}" INTEGRATION_CASE_SHARD_INDEX="${CIRCLE_NODE_INDEX:-0}" \
+  INTEGRATION_CASE_SHARDS="$case_shards" INTEGRATION_CASE_SHARD_INDEX="$case_shard_index" \
   LITELLM_LOCAL_MODEL_COST_MAP=True AWS_EC2_METADATA_DISABLED=true DO_NOT_TRACK=1 \
   INTEGRATION_PROXY_DATABASE_URL="$INTEGRATION_PROXY_DATABASE_URL" \
   INTEGRATION_PROXY_READ_REPLICA_URL="$INTEGRATION_PROXY_READ_REPLICA_URL" \
   INTEGRATION_ROUTING="$INTEGRATION_ROUTING" \
   MCP_TEST_PEER_PYTHON="${MCP_TEST_PEER_PYTHON:-}" \
   .venv/bin/python tests/integration/run.py "$suite" --results "$results" \
-  "${shard_arguments[@]}"
+  "${shard_arguments[@]}" "${selected_nodes[@]}"
 
 if [ "${INTEGRATION_COVERAGE:-0}" = 1 ]; then
   for covered_pid in "$proxy_pid" "$peer_pid"; do

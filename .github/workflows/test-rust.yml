@@ -36,6 +36,7 @@ on:
   pull_request:
     branches:
       - main
+      - stable
       - "litellm_**"
     paths:
       - "litellm-rust/**"

@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - stable
       - litellm_oss_branch
       - "litellm_**"
     paths:
@@ -39,6 +40,15 @@ on:
   schedule:
     - cron: "41 6 * * *"
   workflow_dispatch:
+    inputs:
+      export_candidate:
+        description: Export the tested rootless image only after its security scan succeeds
+        type: boolean
+        default: false
+      expected_sha:
+        description: Required full source commit SHA when exporting a deployment candidate
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -53,13 +63,21 @@ jobs:
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
+
+      - name: Verify deployment candidate source
+        if: github.event_name == 'workflow_dispatch' && inputs.export_candidate
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Download Grype v0.114.0
         run: |
@@ -73,7 +91,11 @@ jobs:
       # Dockerfiles share the same wolfi base and apk set, so OS-layer coverage
       # is the same; matrix-scan if those variants ever diverge.
       - name: Build runtime image
-        run: docker build -f docker/Dockerfile.non_root -t litellm-image-scan:${{ github.sha }} .
+        run: |
+          docker build -f docker/Dockerfile.non_root \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            -t "litellm-image-scan:$GITHUB_SHA" .
 
       - name: Tag the cached builder for Admin MCP schema setup
         run: docker build --target builder -f docker/Dockerfile.non_root -t litellm-admin-mcp-schema:${{ github.sha }} .
@@ -111,6 +133,26 @@ jobs:
             --only-fixed \
             --fail-on high \
             --output table
+
+      - name: Export the scanned candidate without rebuilding
+        if: github.event_name == 'workflow_dispatch' && inputs.export_candidate
+        run: |
+          mkdir -p "$RUNNER_TEMP/litellm-candidate"
+          git rev-parse HEAD > "$RUNNER_TEMP/litellm-candidate/source-sha.txt"
+          docker image inspect "litellm-image-scan:$GITHUB_SHA" --format '{{.Id}}' \
+            > "$RUNNER_TEMP/litellm-candidate/image-config-digest.txt"
+          docker save "litellm-image-scan:$GITHUB_SHA" | gzip -1 > "$RUNNER_TEMP/litellm-candidate/image.tar.gz"
+          (cd "$RUNNER_TEMP/litellm-candidate" && sha256sum image.tar.gz > image.tar.gz.sha256)
+
+      - name: Upload scanned candidate
+        if: github.event_name == 'workflow_dispatch' && inputs.export_candidate
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        with:
+          name: litellm-candidate-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/litellm-candidate/
+          compression-level: 0
+          retention-days: 3
+          if-no-files-found: error
 
   runtime-image:
     name: runtime-image (${{ matrix.dockerfile }})
