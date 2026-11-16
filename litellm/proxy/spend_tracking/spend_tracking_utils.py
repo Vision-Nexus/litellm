@@ -349,7 +349,9 @@ def _get_spend_logs_metadata(
     clean_metadata["litellm_overhead_time_ms"] = litellm_overhead_time_ms
     clean_metadata["cost_breakdown"] = cost_breakdown
     clean_metadata["litellm_call_id"] = litellm_call_id
-    clean_metadata["spend_logs_metadata"] = without_topic_proofs(clean_metadata.get("spend_logs_metadata"))
+    clean_metadata["spend_logs_metadata"] = without_topic_proofs(
+        _OBJECT_MAPPING.validate_python(clean_metadata).get("spend_logs_metadata")
+    )
 
     return clean_metadata
 
@@ -786,7 +788,9 @@ def get_logging_payload(
     # clean up litellm metadata
     clean_metadata = _get_spend_logs_metadata(
         persisted_metadata,
-        topic_logging=topic_cost_log_metadata(persisted_metadata, api_key, standard_logging_payload),
+        topic_logging=topic_cost_log_metadata(
+            _OBJECT_MAPPING.validate_python(persisted_metadata), api_key, standard_logging_payload
+        ),
         is_silent_experiment=(
             standard_logging_payload is not None
             and "is_silent_experiment" in standard_logging_payload["metadata"]

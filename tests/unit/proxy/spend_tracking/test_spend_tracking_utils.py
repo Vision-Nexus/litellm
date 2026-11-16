@@ -6985,6 +6985,8 @@ def test_spend_logs_payload(model_id: str | None):
     expected_metadata_keys: Final = SpendLogsMetadata.__annotations__.keys() - {
         "is_silent_experiment",
         "upstream_provider",
+        "session_topic",
+        "session_topic_cost_status",
     }
 
     assert "metadata" in payload
@@ -6997,6 +6999,7 @@ def test_spend_logs_payload(model_id: str | None):
     assert metadata["user_api_key_team_id"] == "custom-team-id"
     assert metadata["user_api_key_team_alias"] == "custom-team-alias"
     assert metadata["user_api_key_alias"] == "custom-key-alias"
+    assert metadata["spend_logs_metadata"] == {"hello": "world"}
 
     assert payload["custom_llm_provider"] == "azure"
 
