@@ -37,6 +37,7 @@ from litellm.litellm_core_utils.initialize_dynamic_callback_params import (
     validate_langfuse_span_scope_value,
     validate_no_callback_env_reference,
 )
+from litellm.models.session_topics import TopicCostAttribution, TopicCostStatus
 from litellm.proxy.mcp_server.stdio_gate import MCP_STDIO_DISABLED_MESSAGE, is_mcp_stdio_enabled
 from litellm.proxy.spend_tracking.usage_meter import UsageCaptureSettings
 from litellm.types.agents import (
@@ -3750,6 +3751,8 @@ class SpendLogsRouterMetadata(TypedDict):
 
 
 class SpendLogsMetadata(TypedDict):
+    session_topic: ReadOnly[NotRequired[TopicCostAttribution | None]]
+    session_topic_cost_status: ReadOnly[NotRequired[TopicCostStatus]]
     actor_agent_id: ReadOnly[NotRequired[str | None]]
     target_agent_id: ReadOnly[NotRequired[str | None]]
     billing_agent_id: ReadOnly[NotRequired[str | None]]

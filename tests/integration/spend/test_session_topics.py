@@ -17,8 +17,17 @@ from pydantic import SecretStr
 
 from litellm.caching.caching import DualCache
 from litellm.constants import UI_SESSION_TOKEN_TEAM_ID
+from litellm.litellm_core_utils.session_topic_cost import topic_cost_log_metadata
 from litellm.litellm_core_utils.session_topic_text import latest_user_text, make_scope
-from litellm.models.session_topics import TopicAttempt, TopicConfig, TopicResult, TopicState, TopicViewer
+from litellm.models.session_topics import (
+    TopicAttempt,
+    TopicConfig,
+    TopicCostQuery,
+    TopicResult,
+    TopicScope,
+    TopicState,
+    TopicViewer,
+)
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.deps.repositories import get_session_topics_repository
@@ -64,8 +73,13 @@ async def queries() -> AsyncIterator[PostgreSQLQueries]:
         await conn.execute(psycopg.sql.SQL("SET search_path TO {}").format(psycopg.sql.Identifier(schema)))
         await conn.execute(_MIGRATION.read_text(encoding="utf-8"))
         await conn.execute("""CREATE TABLE "LiteLLM_VerificationToken" (token text PRIMARY KEY,user_id text);
-            CREATE TABLE "LiteLLM_SpendLogs" (api_key text,call_type text,status text,total_tokens integer,
-                spend double precision,"startTime" timestamp without time zone DEFAULT (now() at time zone 'UTC'));""")
+            CREATE TABLE "LiteLLM_SpendLogs" (
+                request_id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                api_key text,call_type text,status text,total_tokens integer,spend double precision,
+                "user" text DEFAULT '',team_id text,organization_id text,session_id text,
+                model text DEFAULT 'test-model',model_group text DEFAULT 'test-model',
+                metadata jsonb DEFAULT '{}'::jsonb,
+                "startTime" timestamp without time zone DEFAULT (now() at time zone 'UTC'));""")
         try:
             yield PostgreSQLQueries(conn)
         finally:
@@ -181,9 +195,9 @@ async def test_summary_cost_is_separate_even_when_model_and_user_are_shared(quer
         'INSERT INTO "LiteLLM_VerificationToken" VALUES ($1,$3),($2,NULL)', business, worker, "user-a"
     )
     await queries.execute_raw(
-        """INSERT INTO "LiteLLM_SpendLogs" (api_key,call_type,status,total_tokens,spend)
-        VALUES ($1,'acompletion','success',100,1.0),($2,'acompletion','success',10,0.1),
-        ('invalid','/v1/models','failure',0,0)""",
+        """INSERT INTO "LiteLLM_SpendLogs" (api_key,call_type,status,total_tokens,spend,"user")
+        VALUES ($1,'acompletion','success',100,1.0,'user-a'),($2,'acompletion','success',10,0.1,'user-a'),
+        ('invalid','/v1/models','failure',0,0,'')""",
         business,
         worker,
     )
@@ -287,7 +301,7 @@ async def test_request_hook_ignores_spoofed_purpose_but_skips_authenticated_summ
         "messages": [{"role": "user", "content": "Investigate database timeouts"}],
     }
     try:
-        assert await runtime.hook.async_pre_call_hook(business_auth, DualCache(), body, "completion") is None
+        assert await runtime.hook.async_pre_call_hook(business_auth, DualCache(), body, "completion") is not None
         await asyncio.wait_for(runtime.engine.queue.join(), timeout=10)
         internal: Final = await runtime.hook.async_pre_call_hook(worker_auth, DualCache(), body, "completion")
         await asyncio.wait_for(runtime.engine.queue.join(), timeout=10)
@@ -340,6 +354,11 @@ async def test_real_reader_routes_filter_users_and_deny_summary_identity(queries
             key_scoped: Final = await client.get("/session_topics")
             assert key_scoped.status_code == 200
             assert [row["key_hash"] for row in key_scoped.json()["items"]] == [scope().key_hash]
+            costs: Final = await client.get("/session_topics/costs")
+            assert costs.status_code == 200, costs.text
+            assert [row["key_hash"] for row in costs.json()["items"]] == [scope().key_hash]
+            assert costs.json()["items"][0]["summary"] is None
+            assert (await client.get("/session_topics/costs", params={"group_by": "invalid"})).status_code == 422
             app.dependency_overrides[user_api_key_auth] = lambda: UserAPIKeyAuth(
                 user_id="admin", user_role="proxy_admin"
             )
@@ -351,6 +370,234 @@ async def test_real_reader_routes_filter_users_and_deny_summary_identity(queries
                 user_role="proxy_admin",
             )
             assert (await client.get("/session_topics")).status_code == 403
+            assert (await client.get("/session_topics/costs")).status_code == 403
     finally:
         app.dependency_overrides.clear()
         await generator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_authenticated_organization_separates_identical_key_and_session(queries: PostgreSQLQueries) -> None:
+    config: Final = cost_config().model_copy(update={"enabled": True, "allowed_key_hashes": frozenset({"*"})})
+    generator: Final = LunaTopicGenerator(
+        config, httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(500)))
+    )
+    runtime: Final = SessionTopicRuntime(config, SessionTopicsRepository(lambda: queries), generator)
+    environment: Final = {
+        "LITELLM_SESSION_TOPICS_ENABLED": "true",
+        "LITELLM_SESSION_TOPICS_IDENTITY_SECRET": config.identity_secret.get_secret_value(),
+    }
+    runtime.engine.start()
+    try:
+        for org in ("org-a", "org-b"):
+            identity: Final = scope(org=org)
+            auth: Final = UserAPIKeyAuth(
+                api_key=identity.key_hash, user_id="user-a", team_id="team-a", organization_id=org
+            )
+            stamped: Final = await runtime.hook.async_pre_call_hook(
+                auth, DualCache(), {"litellm_session_id": "same-session", "messages": []}, "completion"
+            )
+            assert stamped is not None
+            projected: Final = topic_cost_log_metadata(
+                stamped.get("metadata"), identity.key_hash, None, environment=environment
+            )
+            assert projected is not None and projected["session_topic"] == {
+                "version": 1,
+                "session_ref": identity.session_ref,
+                "kind": "business",
+            }
+        await asyncio.wait_for(runtime.engine.queue.join(), timeout=10)
+        records: Final = (await runtime.store.list_topics(admin(), 50, 0)).items
+        assert {record.organization_id for record in records} == {"org-a", "org-b"}
+        assert len({record.session_ref for record in records}) == 2
+    finally:
+        await runtime.engine.stop()
+        await generator.aclose()
+
+
+def cost_config() -> TopicConfig:
+    return TopicConfig(
+        identity_secret=SecretStr("test-identity-secret-00000000000000000"),
+        virtual_key=SecretStr("cost-worker"),
+    )
+
+
+async def ready_topic(store: SessionTopicsRepository, identity: TopicScope) -> None:
+    assert await store.claim(identity, "test-model", "cost-test-lease")
+    await store.finish(
+        identity.session_ref,
+        "cost-test-lease",
+        TopicAttempt(
+            state=TopicState.READY, result=TopicResult(topic="Reviewing database connections", category="engineering")
+        ),
+    )
+
+
+async def record_cost(
+    queries: PostgreSQLQueries,
+    request_id: str,
+    identity: TopicScope,
+    amount: float,
+    *,
+    kind: str = "business",
+    price: str | None = "known",
+    linked: bool = True,
+    legacy: bool = False,
+    status: str = "success",
+) -> None:
+    key: Final = scope(key="cost-worker").key_hash if kind == "session_topic" else identity.key_hash
+    attribution: Final = {"version": 1, "session_ref": identity.session_ref, "kind": kind} if linked else None
+    metadata: Final = {
+        **({} if legacy else {"session_topic": attribution}),
+        **({"session_topic_cost_status": price} if price is not None else {}),
+    }
+    await queries.execute_raw(
+        """INSERT INTO "LiteLLM_SpendLogs"
+        (request_id,api_key,call_type,status,total_tokens,spend,"user",team_id,organization_id,session_id,metadata)
+        VALUES($1,$2,'acompletion',$3,10,$4,$5,$6,$7,'same-session',$8::jsonb)
+        ON CONFLICT(request_id) DO NOTHING""",
+        request_id,
+        key,
+        status,
+        amount,
+        identity.user_id,
+        identity.team_id,
+        identity.organization_id,
+        json.dumps(metadata),
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_costs_preserve_retries_unpriced_calls_and_unassociated_spend(queries: PostgreSQLQueries) -> None:
+    store: Final = SessionTopicsRepository(lambda: queries)
+    first: Final = scope()
+    second: Final = scope(key="sibling-key")
+    await ready_topic(store, first)
+    await ready_topic(store, second)
+    await record_cost(queries, "business-one", first, 1)
+    await record_cost(queries, "business-one", first, 1)
+    await record_cost(queries, "business-two", second, 2)
+    await record_cost(queries, "unpriced", first, 0, price="unpriced")
+    await record_cost(queries, "summary-one", first, 0.1, kind="session_topic")
+    await record_cost(queries, "summary-retry", first, 0.02, kind="session_topic", status="failure")
+    await record_cost(queries, "legacy-summary", first, 0.03, kind="session_topic", legacy=True, linked=False)
+    await record_cost(queries, "no-session", first, 0.5, linked=False)
+    page: Final = await store.costs(admin(), cost_config(), TopicCostQuery(group_by="topic"))
+    assert page.total_groups == 1 and len(page.items) == 1
+    item: Final = page.items[0]
+    assert item.sessions == 2 and item.ready_sessions == 2
+    assert item.business.requests == 3 and item.business.recorded_spend == 3
+    assert item.business.amount is None and item.business.unpriced_requests == 1
+    assert item.summary is not None and item.summary.requests == 2 and item.summary.failed == 1
+    assert item.summary.amount == pytest.approx(0.12)
+    assert item.total is not None and item.total.amount is None
+    assert item.total.recorded_spend == pytest.approx(3.12)
+    unassociated: Final = {bucket.kind: bucket.costs for bucket in page.unassociated}
+    assert unassociated["business"].recorded_spend == 0.5
+    assert unassociated["session_topic"].recorded_spend == 0.03
+    assert sum(bucket.costs.recorded_spend for bucket in page.totals) == pytest.approx(3.65)
+    own: Final = await store.costs(
+        TopicViewer(actor_ref="first-key", key_hash=first.key_hash), cost_config(), TopicCostQuery()
+    )
+    assert len(own.items) == 1 and own.items[0].key_hash == first.key_hash
+    assert own.items[0].summary is None and own.items[0].total is None
+    assert tuple(bucket.kind for bucket in own.totals) == ("business",)
+    owner: Final = await store.costs(TopicViewer(actor_ref="owner", user_id="user-a"), cost_config(), TopicCostQuery())
+    assert len(owner.items) == 2
+    assert tuple(bucket.kind for bucket in owner.totals) == ("business",)
+
+
+@pytest.mark.asyncio
+async def test_legacy_business_recovery_does_not_guess_summary_links_or_reprice_old_zeroes(
+    queries: PostgreSQLQueries,
+) -> None:
+    store: Final = SessionTopicsRepository(lambda: queries)
+    identity: Final = scope()
+    await ready_topic(store, identity)
+    await record_cost(queries, "historical-known", identity, 0.6, legacy=True, linked=False, price=None)
+    await record_cost(queries, "historical-unknown", identity, 0, legacy=True, linked=False, price=None)
+    await record_cost(queries, "historical-summary", identity, 0.07, kind="session_topic", legacy=True, price=None)
+    await record_cost(queries, "known-free", identity, 0)
+    page: Final = await store.costs(admin(), cost_config(), TopicCostQuery())
+    assert len(page.items) == 1
+    item: Final = page.items[0]
+    assert item.historical_business_requests == 2
+    assert item.business.requests == 3 and item.business.recorded_spend == 0.6
+    assert item.business.amount is None and item.business.unknown_cost_requests == 1
+    assert item.summary is not None and item.summary.requests == 0
+    assert page.unassociated[0].kind == "session_topic" and page.unassociated[0].costs.recorded_spend == 0.07
+    wrong_secret: Final = cost_config().model_copy(update={"identity_secret": SecretStr("different-identity-secret")})
+    unreadable: Final = await store.costs(admin(), wrong_secret, TopicCostQuery())
+    assert unreadable.items[0].historical_business_requests == 0
+    assert unreadable.items[0].business.requests == 1 and unreadable.items[0].business.amount == 0
+
+
+@pytest.mark.asyncio
+async def test_cost_queries_cannot_attribute_a_business_charge_to_a_sibling_key(queries: PostgreSQLQueries) -> None:
+    store: Final = SessionTopicsRepository(lambda: queries)
+    first: Final = scope()
+    second: Final = scope(user="other-user", key="other-key")
+    await ready_topic(store, first)
+    await ready_topic(store, second)
+    await record_cost(queries, "forged-import", first, 7)
+    await queries.execute_raw(
+        """UPDATE "LiteLLM_SpendLogs" SET metadata=jsonb_set(metadata,'{session_topic,session_ref}',to_jsonb($1::text))
+           WHERE request_id='forged-import'""",
+        second.session_ref,
+    )
+    page: Final = await store.costs(admin(), cost_config(), TopicCostQuery())
+    assert all(item.business.requests == 0 for item in page.items)
+    assert page.unassociated[0].costs.recorded_spend == 7
+    foreign: Final = await store.costs(
+        TopicViewer(actor_ref="other", key_hash=second.key_hash), cost_config(), TopicCostQuery()
+    )
+    assert foreign.totals == () and foreign.unassociated == ()
+
+
+@pytest.mark.asyncio
+async def test_legacy_scan_reports_its_bound_without_dropping_unmatched_charges(queries: PostgreSQLQueries) -> None:
+    store: Final = SessionTopicsRepository(lambda: queries)
+    identity: Final = scope()
+    other: Final = scope(key="older-key")
+    await ready_topic(store, identity)
+    await ready_topic(store, other)
+    await record_cost(queries, "older-charge", other, 4, legacy=True, linked=False, price=None)
+    await queries.execute_raw("""UPDATE "LiteLLM_SpendLogs" SET "startTime"=now()-interval '1 hour'""")
+    await queries.execute_raw(
+        """INSERT INTO "LiteLLM_SpendLogs"
+        (request_id,api_key,call_type,status,total_tokens,spend,"user",team_id,organization_id,session_id)
+        SELECT 'recent-'||n,$1,'acompletion','success',1,0.01,'user-a','team-a','org-a','same-session'
+        FROM generate_series(1,1001) n""",
+        identity.key_hash,
+    )
+    page: Final = await store.costs(admin(), cost_config(), TopicCostQuery())
+    assert page.legacy_scan_limit == 1000 and page.legacy_scan_truncated is True
+    assert sum(item.business.requests for item in page.items) == 1001
+    assert page.unassociated[0].costs.requests == 1 and page.unassociated[0].costs.recorded_spend == 4
+
+
+@pytest.mark.asyncio
+async def test_cost_pagination_keeps_window_totals_and_excludes_future_charges(queries: PostgreSQLQueries) -> None:
+    store: Final = SessionTopicsRepository(lambda: queries)
+    first: Final = scope()
+    second: Final = scope(key="second-key")
+    await ready_topic(store, first)
+    await ready_topic(store, second)
+    await record_cost(queries, "recent", first, 1)
+    await record_cost(queries, "older", second, 3)
+    await record_cost(queries, "future", first, 100)
+    await queries.execute_raw(
+        """UPDATE "LiteLLM_SpendLogs" SET "startTime"=now()-interval '10 days' WHERE request_id='older'"""
+    )
+    await queries.execute_raw(
+        """UPDATE "LiteLLM_SpendLogs" SET "startTime"=now()+interval '1 day' WHERE request_id='future'"""
+    )
+    narrow: Final = await store.costs(admin(), cost_config(), TopicCostQuery(days=7))
+    assert narrow.totals[0].costs.recorded_spend == 1
+    full: Final = await store.costs(admin(), cost_config(), TopicCostQuery(days=30, group_by="key", limit=1))
+    next_page: Final = await store.costs(
+        admin(), cost_config(), TopicCostQuery(days=30, group_by="key", limit=1, offset=1)
+    )
+    assert full.total_groups == next_page.total_groups == 2
+    assert full.items[0].key_hash == second.key_hash and next_page.items[0].key_hash == first.key_hash
+    assert full.totals == next_page.totals and full.totals[0].costs.recorded_spend == 4

@@ -4,20 +4,30 @@ import asyncio
 import hashlib
 import logging
 import os
-from collections.abc import AsyncGenerator, Mapping
+import time
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Final, cast  # noqa: TID251  # Prisma raw-query methods lack async typings.
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI
-from pydantic import TypeAdapter
 
 import litellm
 from litellm.integrations.custom_logger import CustomLogger
+from litellm.litellm_core_utils.core_helpers import get_metadata_variable_name_from_kwargs
+from litellm.litellm_core_utils.session_topic_cost import (
+    TOPIC_COST_CONTEXT,
+    TOPIC_PARENT_CONTEXT,
+    CostContext,
+    cost_context,
+    verify_parent,
+    without_topic_proofs,
+)
 from litellm.litellm_core_utils.session_topic_text import (
     hash_key,
     latest_user_text,
     make_scope,
+    object_mapping,
     session_id,
     validate_topic,
 )
@@ -33,7 +43,6 @@ if TYPE_CHECKING:
 
 _LOG: Final = logging.getLogger("litellm.session_topics")
 _CALL_TYPES: Final = frozenset(("completion", "acompletion", "responses", "aresponses", "anthropic_messages"))
-_OPTIONAL_STRING: Final[TypeAdapter[str | None]] = TypeAdapter(str | None)
 
 
 def authenticated_key(auth: UserAPIKeyAuth) -> str | None:
@@ -42,10 +51,11 @@ def authenticated_key(auth: UserAPIKeyAuth) -> str | None:
 
 
 class SessionTopicHook(CustomLogger):
-    def __init__(self, config: TopicConfig, engine: TopicEngine) -> None:
+    def __init__(self, config: TopicConfig, engine: TopicEngine, clock: Callable[[], float] = time.time) -> None:
         super().__init__(turn_off_message_logging=True)  # pyright: ignore[reportUnknownMemberType]  # Legacy extension constructor has untyped kwargs.
         self.config = config
         self.engine = engine
+        self.clock = clock
         self.worker_hashes = (
             frozenset((hash_key(config.virtual_key.get_secret_value()),)) | config.prior_worker_key_hashes
         )
@@ -57,8 +67,12 @@ class SessionTopicHook(CustomLogger):
         if key is None:
             return None
         if key in self.worker_hashes:
+            metadata: Final = object_mapping(data.get(get_metadata_variable_name_from_kwargs(data)))
+            spend_metadata: Final = object_mapping(metadata.get("spend_logs_metadata"))
+            parent: Final = verify_parent(spend_metadata.get(TOPIC_PARENT_CONTEXT), self.config, key, self.clock())
+            summary_context: Final = cost_context(self.config, parent, key, "session_topic") if parent else None
             return {
-                **data,
+                **with_cost_context(data, summary_context),
                 "store": False,
                 "cache": {"no-cache": True, "no-store": True},
                 "num_retries": 0,
@@ -67,21 +81,36 @@ class SessionTopicHook(CustomLogger):
         if call_type not in _CALL_TYPES or not self.config.enabled:
             return None
         if "*" not in self.config.allowed_key_hashes and key not in self.config.allowed_key_hashes:
-            return None
+            return with_cost_context(data, None)
         session: Final = session_id(data)
         if session is None:
             self.engine.unassociated_requests += 1
-            return None
+            return with_cost_context(data, None)
         scope: Final = make_scope(
             self.config.identity_secret.get_secret_value(),
             key,
             session,
             user_api_key_dict.user_id,
             user_api_key_dict.team_id,
-            _OPTIONAL_STRING.validate_python(getattr(user_api_key_dict, "organization_id", None)),
+            user_api_key_dict.org_id,
         )
         self.engine.submit(scope, latest_user_text(data))
-        return None
+        return with_cost_context(data, cost_context(self.config, scope.session_ref, key, "business"))
+
+
+def with_cost_context(
+    data: Mapping[str, object], context: CostContext | None
+) -> dict[str, object]:  # mutable-ok: the proxy hook contract needs a request dictionary
+    bucket: Final = get_metadata_variable_name_from_kwargs(data)
+    metadata: Final = object_mapping(data.get(bucket))
+    spend: Final = without_topic_proofs(metadata.get("spend_logs_metadata")) or {}
+    return {
+        **data,
+        bucket: {
+            **metadata,
+            "spend_logs_metadata": {**spend, TOPIC_COST_CONTEXT: context.model_dump() if context else None},
+        },
+    }
 
 
 class SessionTopicRuntime:

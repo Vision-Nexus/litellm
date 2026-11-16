@@ -7,7 +7,14 @@ from typing import Annotated, Final, TypeAlias
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from litellm.constants import UI_SESSION_TOKEN_TEAM_ID
-from litellm.models.session_topics import TopicOverview, TopicPage, TopicViewer
+from litellm.models.session_topics import (
+    TopicCostGrouping,
+    TopicCostPage,
+    TopicCostQuery,
+    TopicOverview,
+    TopicPage,
+    TopicViewer,
+)
 from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.deps.repositories import SessionTopicsRepositoryDep
@@ -75,4 +82,29 @@ async def session_topic_overview(
         raise HTTPException(status_code=503, detail="Session topic database is unavailable")
     result: Final = await topics.overview(viewer, tuple(runtime.hook.worker_hashes), days)
     await topics.audit_read(viewer, "overview", result.sessions)
+    return result
+
+
+@router.get("/session_topics/costs", response_model=TopicCostPage)
+async def session_topic_costs(
+    request: Request,
+    auth: _Auth,
+    topics: SessionTopicsRepositoryDep,
+    days: Annotated[int, Query(ge=1, le=365)] = 7,
+    group_by: Annotated[TopicCostGrouping, Query()] = "session",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0, le=100000)] = 0,
+) -> TopicCostPage:
+    """Recorded session costs, with unpriced and unassociated requests kept explicit.
+
+    Internal summary costs are visible only to proxy administrators. Historical
+    business linkage is read-only and bounded. No provider invoice is inferred.
+    """
+    runtime: Final = topic_runtime(request)
+    viewer: Final = topic_viewer(auth, runtime)
+    if topics is None:
+        raise HTTPException(status_code=503, detail="Session topic database is unavailable")
+    query: Final = TopicCostQuery(days=days, group_by=group_by, limit=limit, offset=offset)
+    result: Final = await topics.costs(viewer, runtime.config, query)
+    await topics.audit_read(viewer, "costs", len(result.items))
     return result

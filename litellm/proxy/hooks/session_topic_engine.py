@@ -100,7 +100,7 @@ class TopicEngine:
             return True
         try:
             attempt: Final = await asyncio.wait_for(
-                self.generator.generate(job.text, repair=repair),
+                self.generator.generate(job.text, repair=repair, scope=job.scope),
                 timeout=min(self.config.timeout_seconds, remaining),
             )
         except asyncio.CancelledError:

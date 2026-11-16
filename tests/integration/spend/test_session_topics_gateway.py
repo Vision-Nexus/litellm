@@ -43,6 +43,8 @@ def _upstream(request: Request) -> Reply:
     if request.method == "GET" and request.target == "/v1/models":
         return Reply(body=b'{"object":"list","data":[]}')
     assert request.target.endswith("/chat/completions"), request.target
+    assert b"_litellm_session_topic" not in request.body, "Internal accounting context reached the provider"
+    assert b'"proof"' not in request.body, "Accounting signatures reached the provider"
     body: Final = JSON_OBJECT.validate_json(request.body)
     summary: Final = object_value(body.get("response_format", {})).get("type") == "json_schema"
     content: Final = json.dumps({"topic": TOPIC, "category": "engineering"}) if summary else "Synthetic reply"
@@ -247,6 +249,23 @@ def test_live_proxy_records_one_private_topic_per_session(
         )
         assert records[0]["topic"] == TOPIC and records[0]["attempts"] == 1, records
         assert records[0]["key_hash"] == sha256(key.encode()).hexdigest(), records
+        costs: Final = eventually(
+            lambda: gateway.get("/session_topics/costs"),
+            lambda page: any(
+                object_value(item).get("session_ref") == records[0]["session_ref"]
+                and object_value(object_value(item).get("business", {})).get("requests") == 1
+                and object_value(object_value(item).get("summary", {})).get("requests") == 1
+                for item in list_value(page["items"])
+            ),
+            seconds=70,
+        )
+        cost: Final = next(
+            object_value(item)
+            for item in list_value(costs["items"])
+            if object_value(item).get("session_ref") == records[0]["session_ref"]
+        )
+        assert object_value(cost["business"])["amount"] == pytest.approx(7 * 0.001 + 2 * 0.002)
+        assert object_value(cost["summary"])["amount"] == pytest.approx(7 * 0.001 + 2 * 0.002)
         _send(gateway, key, endpoint, session, stream)
         unchanged: Final = held(
             lambda: _topics(gateway, key),
@@ -260,6 +279,11 @@ def test_live_proxy_records_one_private_topic_per_session(
         )
         assert session not in json.dumps(persisted) and SECRET not in json.dumps(persisted), persisted
         assert SECRET not in topic_gateway.process.log.read_text(), "Raw input appeared in proxy logs"
+        stored_cost_metadata: Final = gateway.rows(
+            'SELECT metadata::text AS metadata FROM "LiteLLM_SpendLogs" WHERE api_key=%s',
+            (sha256(key.encode()).hexdigest(),),
+        )
+        assert "_litellm_session_topic" not in json.dumps(stored_cost_metadata), "Accounting signatures were persisted"
 
 
 def test_live_auth_isolates_sibling_keys_and_separates_summary_spend(topic_gateway: TopicGateway) -> None:
@@ -309,3 +333,11 @@ def test_live_auth_isolates_sibling_keys_and_separates_summary_spend(topic_gatew
         own_usage: Final = list_value(JSON_OBJECT.validate_json(own.content)["usage"])
         assert len(own_usage) == 1 and object_value(own_usage[0])["kind"] == "business", own.text
         assert object_value(own_usage[0])["requests"] == 1, own.text
+        own_costs: Final = gateway.request("GET", "/session_topics/costs", key=first)
+        assert own_costs.status_code == 200, own_costs.text
+        visible_costs: Final = JSON_OBJECT.validate_json(own_costs.content)
+        assert len(list_value(visible_costs["items"])) == 1, own_costs.text
+        own_item: Final = object_value(list_value(visible_costs["items"])[0])
+        assert own_item["key_hash"] == sha256(first.encode()).hexdigest()
+        assert own_item["summary"] is None and own_item["total"] is None
+        assert gateway.request("GET", "/session_topics/costs", key=topic_gateway.worker_key).status_code == 403

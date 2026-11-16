@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import Final
 
 import httpx
 from openai import APIError, AsyncOpenAI
 
+from litellm.litellm_core_utils.session_topic_cost import TOPIC_PARENT_CONTEXT, parent_context
 from litellm.litellm_core_utils.session_topic_text import sanitize_input, validate_topic
-from litellm.models.session_topics import TopicAttempt, TopicConfig, TopicResult, TopicState
+from litellm.models.session_topics import TopicAttempt, TopicConfig, TopicResult, TopicScope, TopicState
 from litellm.rust_bridge.tokenizer import get_encoding
 
 _INSTRUCTIONS: Final = (
@@ -25,8 +28,11 @@ _REPAIR: Final = (
 
 
 class LunaTopicGenerator:
-    def __init__(self, config: TopicConfig, http_client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self, config: TopicConfig, http_client: httpx.AsyncClient | None = None, clock: Callable[[], float] = time.time
+    ) -> None:
         self.config = config
+        self.clock = clock
         self.client = AsyncOpenAI(
             api_key=config.virtual_key.get_secret_value(),
             base_url=config.gateway_url,
@@ -39,7 +45,7 @@ class LunaTopicGenerator:
     async def aclose(self) -> None:
         await self.client.close()
 
-    async def generate(self, text: str, repair: bool) -> TopicAttempt:
+    async def generate(self, text: str, repair: bool, scope: TopicScope | None = None) -> TopicAttempt:
         instructions: Final = _INSTRUCTIONS + (_REPAIR if repair else "")
         overhead: Final = len(self.encoding.encode(instructions)) + 256
         budget: Final = max(0, self.config.input_token_limit - overhead)
@@ -61,7 +67,20 @@ class LunaTopicGenerator:
                     "json_schema": {"name": "session_topic", "strict": True, "schema": TopicResult.model_json_schema()},
                 },
                 extra_headers={"Cache-Control": "no-store, no-cache", "x-litellm-enable-message-redaction": "true"},
-                extra_body={"cache": {"no-cache": True, "no-store": True}},
+                extra_body={
+                    "cache": {"no-cache": True, "no-store": True},
+                    **(
+                        {
+                            "litellm_metadata": {
+                                "spend_logs_metadata": {
+                                    TOPIC_PARENT_CONTEXT: parent_context(self.config, scope, self.clock()).model_dump()
+                                }
+                            }
+                        }
+                        if scope is not None
+                        else {}
+                    ),
+                },
             )
         except (APIError, httpx.HTTPError):
             return TopicAttempt(state=TopicState.UPSTREAM_FAILURE)

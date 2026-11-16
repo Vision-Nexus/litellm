@@ -35,6 +35,7 @@ Set these environment variables through deployment secrets and configuration.
 | `LITELLM_SESSION_TOPICS_IDENTITY_SECRET` | Shared random secret of at least 32 characters |
 | `LITELLM_SESSION_TOPICS_ALLOWED_KEYS` | Comma-separated authenticated key SHA-256 hashes; empty means no business keys; `*` explicitly enables all |
 | `LITELLM_SESSION_TOPICS_PRIOR_WORKER_KEYS` | Optional old summary-key hashes for a rotation overlap |
+| `LITELLM_SESSION_TOPICS_RETENTION_DAYS` | Topic and read-audit retention after last activity, 1 to 365 days, default 30 |
 
 The identity secret must be identical across workers. Rotating it starts new session references, so retire old references through the retention policy instead of trying to merge them by IP.
 
@@ -50,9 +51,33 @@ Open **Observability / Session topics** in the dashboard. The page shows only th
 
 `GET /session_topics/overview?days=7` returns retained-session status counts and usage from the existing spend ledger. Business inference, internal summaries and other gateway traffic are reported separately. Classification uses authenticated key hashes, not the model name or caller-provided purpose labels. Summary-key hashes are registered persistently so rotating a key does not reclassify its historical spend as business usage. Regular callers do not receive other users' or the shared summary service's usage.
 
-Reads are audited with an opaque actor reference, operation, count and timestamp. Topic content is not copied into the read audit. Topic records and read audits are purged in bounded batches after 30 days. Summary-key hashes are retained as accounting classification metadata. No raw key is stored in these tables.
+Reads are audited with an opaque actor reference, operation, count and timestamp. Topic content is not copied into the read audit. Topic records and read audits are purged in bounded batches after the configured retention period, 30 days by default. Summary-key hashes are retained as accounting classification metadata. No raw key is stored in these tables.
 
 The original request ledger remains intact. Revoking a key does not reclassify its historical inference or summary requests. A failed or timed-out summary can still have a provider charge. Do not delete internal summary records or treat a missing usage response as zero cost. The displayed values are LiteLLM-recorded spend, not reconciled provider invoices.
+
+## Topic cost attribution
+
+The Costs view on the same page calls `GET /session_topics/costs?days=30&group_by=session&limit=50&offset=0`. The window accepts 1 to 365 days. Group by `session`, `topic`, or `key`. Topic grouping combines only identical topic text and category, including ungenerated topics in their own group. It does not infer semantic similarity. Responses include request and token counts, model aliases, and business, summary and combined costs. This feature does not require an Enterprise license.
+
+Only administrators can see summary and combined amounts. Other readers receive their authorized business costs with `summary` and `total` set to null, not zero. Global totals cover the whole selected window regardless of pagination. Unassociated usage remains visible separately, so charges are not silently lost when a request has no usable session identifier or its topic has expired.
+
+New requests use an authenticated, key-bound session reference. Internal summary calls carry a short-lived signed parent reference through the proxy's internal metadata. The spend logger validates the billing context against the actual billed key, removes signatures and stores only `metadata.session_topic` and `metadata.session_topic_cost_status`. These fields are stamped by the server, not accepted from caller labels. The original spend ledger and its request deduplication remain authoritative. Signed contexts are not provider request parameters and must not appear in provider bodies.
+
+`recorded_spend` always preserves the sum recorded in the ledger. `amount` is null when any contributing request has unknown or missing pricing. Counts of `unpriced_requests` and `unknown_cost_requests` explain that incomplete total. A verified zero is displayed as zero, while a tiny nonzero cost is never rounded to zero. Failed requests remain in the report, but an unknown provider charge is not guessed from its failure status. Configure provider-approved custom rates through LiteLLM's normal pricing configuration when a model is missing from the catalog. The feature does not invent prices or recalculate old bills using today's rates.
+
+Existing business logs can be associated without rewriting rows when their session identifier, billed key, organization and team reproduce a retained topic reference with the current identity secret. Each report reads at most 1,001 recent eligible legacy rows to recover up to 1,000 candidate scopes, then aggregates matching retained requests. A truncated scan is explicitly reported. This bounds the recovery input, not the total SQL work required to aggregate the selected time window. Historical summaries cannot be safely linked by title or time and remain unassociated. Historical zero-spend records without pricing-quality metadata remain unknown. Earlier records made before authenticated organization IDs were included cannot be assumed to belong to an organization-scoped session.
+
+Keep `session_topic` and `session_topic_cost_status` in any configured spend-log metadata allowlist, and retain `session_id`, `api_key`, `user`, `team_id`, `organization_id`, `startTime`, tokens and spend for the desired reporting period. Metadata filtering can prevent attribution or pricing-quality reporting. Disabling message storage does not require deleting these accounting fields. Align topic retention and spend-log retention with the reporting window. Raising retention cannot restore already purged topics or ledger rows.
+
+## Future upgrades
+
+Keep the topic feature on its own branch and merge a reviewed official release into it. Pin both the upstream release and the resulting commit. Resolve changes to the request hook, canonical spend logger, authentication, Prisma schema and generated dashboard API types before building a candidate. Do not replace the fork image with an official image and expect the custom endpoints to remain available.
+
+Build and test the exact candidate commit in GitHub CI. Run the full existing suite, focused session accounting integration, UI checks and image scanning. Report inherited or environment-dependent failures separately instead of treating them as passes. Generate `schema.d.ts` from the candidate's live OpenAPI in CI and commit that generated artifact. Do not compile a replacement image on a workstation.
+
+Test the scanned image by immutable digest using the independent deployment, Service, database and Redis in the `litellm` namespace. Preserve the existing topic identity secret, virtual-key identities and worker-key registry when migrating real reporting data. Do not re-bootstrap keys during an upgrade. Before any production promotion, back up the database and verify migration and restore procedures. This cost extension adds no tables or data-rewrite migrations, but a later upstream release may change that.
+
+Verify all three inference APIs with and without streaming, key and organization isolation, no content or signature leakage, summary separation, incomplete pricing and unchanged business responses. Check the actual Costs page as well as API totals. Only then approve a separate production change. Rolling back the container does not roll back an upstream database migration. Keep the previous compatible image digest and tested database recovery procedure available.
 
 ## Verification and rollout
 
