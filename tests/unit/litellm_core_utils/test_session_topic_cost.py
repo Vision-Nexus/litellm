@@ -55,6 +55,8 @@ def test_spend_context_cannot_be_moved_between_keys_or_changed_by_a_client() -> 
         ({"response_cost": float("nan")}, "unknown"),
         ({"response_cost": 0, "cache_hit": True}, "known"),
         ({"response_cost": 0, "cost_finalized": True, "status": "success"}, "known"),
+        ({"response_cost": 0, "cost_breakdown": {}}, "unknown"),
+        ({"response_cost": 0, "cost_breakdown": {"total_cost": 0}}, "unknown"),
         ({"response_cost": 0, "status": "failure", "total_tokens": 0}, "unknown"),
         ({"response_cost": 0, "zero_cost_diagnostic": {"reason": "missing_pricing_key"}}, "unpriced"),
         ({"response_cost": 0, "zero_cost_diagnostic": {"reason": "pricing_not_applied"}}, "unknown"),

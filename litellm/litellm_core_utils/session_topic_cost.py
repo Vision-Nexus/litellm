@@ -127,7 +127,7 @@ def cost_status(payload: Mapping[str, object] | None) -> TopicCostStatus:
         return "known"
     if payload.get("status") == "failure" and not payload.get("total_tokens"):
         return "unknown"
-    if payload.get("cost_finalized") is True or isinstance(payload.get("cost_breakdown"), Mapping):
+    if payload.get("cost_finalized") is True:
         return "known"
     return "unknown"
 
