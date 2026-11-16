@@ -54,7 +54,7 @@ def test_spend_context_cannot_be_moved_between_keys_or_changed_by_a_client() -> 
         ({"response_cost": -0.1}, "known"),
         ({"response_cost": float("nan")}, "unknown"),
         ({"response_cost": 0, "cache_hit": True}, "known"),
-        ({"response_cost": 0, "cost_finalized": True, "status": "success"}, "known"),
+        ({"response_cost": 0, "cost_finalized": True, "status": "success"}, "unpriced"),
         ({"response_cost": 0, "cost_breakdown": {}}, "unknown"),
         ({"response_cost": 0, "cost_breakdown": {"total_cost": 0}}, "unknown"),
         ({"response_cost": 0, "status": "failure", "total_tokens": 0}, "unknown"),
@@ -68,6 +68,23 @@ def test_price_observation_does_not_confuse_missing_rates_with_free_calls(
     payload: dict[str, object] | None, expected: str
 ) -> None:
     assert cost_status(payload) == expected
+
+
+@pytest.mark.parametrize(
+    ("rates", "expected"),
+    (
+        ({"input_cost_per_token": 0, "output_cost_per_token": 0}, "known"),
+        ({"input_cost_per_token": 0}, "unpriced"),
+        ({"input_cost_per_token": None, "output_cost_per_token": None}, "unpriced"),
+        ({"input_cost_per_token": 0.001, "output_cost_per_token": 0.002}, "unknown"),
+        ({"input_cost_per_token": False, "output_cost_per_token": 0}, "unknown"),
+        ({"input_cost_per_token": float("nan"), "output_cost_per_token": 0}, "unknown"),
+    ),
+)
+def test_finalized_zero_requires_explicit_free_rates(rates: dict[str, object], expected: str) -> None:
+    assert cost_status(
+        {"response_cost": 0, "cost_finalized": True, "model_map_information": {"model_map_value": rates}}
+    ) == expected
 
 
 def test_log_projection_keeps_only_verified_reference_and_canonical_price_status() -> None:

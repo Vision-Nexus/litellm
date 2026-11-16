@@ -14438,3 +14438,45 @@ def test_record_native_bedrock_guardrail_bills_each_call_its_own_trace_when_call
     (first_cost, second_cost) = costs
     assert second_cost == pytest.approx(2 * first_cost)
     assert shared_metadata == {"tag": "x"}
+
+
+@pytest.mark.parametrize(
+    ("rates", "expected"),
+    (({}, "unpriced"), ({"input_cost_per_token": 0.0, "output_cost_per_token": 0.0}, "known")),
+)
+def test_topic_cost_snapshot_distinguishes_capability_defaults_from_free_generalized_models(
+    monkeypatch: pytest.MonkeyPatch, rates: dict[str, float], expected: str
+) -> None:
+    from litellm.litellm_core_utils.fallback_generalizations import (
+        get_fallback_generalization_rules,
+        set_fallback_generalizations,
+    )
+    from litellm.litellm_core_utils.session_topic_cost import cost_status
+
+    model: Final = "openai/topic-generalized-pricing-test"
+    previous_rules: Final = get_fallback_generalization_rules()
+    monkeypatch.setenv("LITELLM_SESSION_TOPICS_ENABLED", "true")
+    try:
+        set_fallback_generalizations(
+            [{"pattern": "topic-generalized-pricing-test$", "model_info": {"mode": "chat", **rates}}]
+        )
+        litellm.get_model_info.cache_clear()
+        snapshot: Final = StandardLoggingPayloadSetup.get_model_cost_information(
+            base_model=model,
+            custom_pricing=False,
+            custom_llm_provider="openai",
+            init_response_obj=ModelResponse(model=model),
+        )
+        assert cost_status(
+            {
+                "response_cost": 0.0,
+                "cost_finalized": True,
+                "total_tokens": 30,
+                "model_map_information": snapshot,
+            }
+        ) == expected
+        assert snapshot["model_map_value"] is not None
+        assert snapshot["model_map_value"]["input_cost_per_token"] == rates.get("input_cost_per_token")
+    finally:
+        set_fallback_generalizations(previous_rules)
+        litellm.get_model_info.cache_clear()

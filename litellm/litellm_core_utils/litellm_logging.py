@@ -7117,6 +7117,7 @@ class StandardLoggingPayloadSetup:
                     model=pricing_model_name or model_cost_name,
                     custom_llm_provider=custom_llm_provider,
                     api_base=api_base,
+                    preserve_unset_costs=os.getenv("LITELLM_SESSION_TOPICS_ENABLED", "false").lower() == "true",
                 )
                 model_cost_information = StandardLoggingModelInformation(
                     model_map_key=model_cost_name,

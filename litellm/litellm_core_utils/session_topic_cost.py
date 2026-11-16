@@ -127,7 +127,12 @@ def cost_status(payload: Mapping[str, object] | None) -> TopicCostStatus:
         return "known"
     if payload.get("status") == "failure" and not payload.get("total_tokens"):
         return "unknown"
-    if payload.get("cost_finalized") is True:
+    rates: Final = tuple(_mapping(pricing).get(key) for key in ("input_cost_per_token", "output_cost_per_token"))
+    if payload.get("cost_finalized") is not True:
+        return "unknown"
+    if any(rate is None for rate in rates):
+        return "unpriced"
+    if all(not isinstance(rate, bool) and isinstance(rate, int | float) and rate == 0 for rate in rates):
         return "known"
     return "unknown"
 

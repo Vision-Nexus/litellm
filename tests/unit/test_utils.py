@@ -11439,3 +11439,22 @@ def test_ollama_pricing_lookup_preserves_live_model_info_discovery(
     )
     assert discovered["max_input_tokens"] == 32768
     assert metadata.call_count == 1
+
+
+@pytest.mark.parametrize("rates", ({}, {"input_cost_per_token": 0.0, "output_cost_per_token": 0.0}))
+def test_pricing_snapshot_preserves_missing_rates_without_changing_default_lookup(
+    rates: dict[str, float], local_model_cost_map: None
+) -> None:
+    from litellm.utils import get_model_info_for_pricing
+
+    model: Final = "openai/topic-pricing-snapshot-test"
+    with patch.dict(litellm.model_cost, {model: {"litellm_provider": "openai", "mode": "chat", **rates}}):
+        litellm.get_model_info.cache_clear()
+        snapshot: Final = get_model_info_for_pricing(model, preserve_unset_costs=True)
+        default: Final = get_model_info_for_pricing(model)
+        assert (snapshot["input_cost_per_token"], snapshot["output_cost_per_token"]) == (
+            rates.get("input_cost_per_token"),
+            rates.get("output_cost_per_token"),
+        )
+        assert (default["input_cost_per_token"], default["output_cost_per_token"]) == (0.0, 0.0)
+    litellm.get_model_info.cache_clear()
