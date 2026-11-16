@@ -26,6 +26,13 @@ class Assignment:
     def record(self) -> dict[str, str | int]:
         return {"suite": self.suite, "index": self.index, "count": self.count, "workers": self.workers}
 
+    def qualification_record(self) -> dict[str, str | int]:
+        return {
+            "suite": self.suite,
+            "count": self.count,
+            "artifact_pattern": f"integration-execution-{self.suite}-[0-9]*-of-{self.count}",
+        }
+
 
 def plan(suite: str, workers: str, focused: bool) -> tuple[Assignment, ...] | str:
     if suite != "all" and suite not in SUITES:
@@ -56,7 +63,7 @@ def outputs(assignments_: tuple[Assignment, ...]) -> str:
     matrix: Final = {"include": tuple(assignment.record() for assignment in assignments_)}
     qualification: Final = {
         "include": tuple(
-            {"suite": assignment.suite, "count": assignment.count}
+            assignment.qualification_record()
             for assignment in assignments_
             if assignment.index == 0 and assignment.suite != "browser"
         )

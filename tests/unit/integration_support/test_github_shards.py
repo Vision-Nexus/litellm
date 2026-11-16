@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from fnmatch import fnmatchcase
 from io import StringIO
 from itertools import chain
 from typing import Final
@@ -111,6 +112,29 @@ def test_matrix_command_outputs_separate_execution_and_qualification_plans() -> 
     values: Final = dict(line.split("=", 1) for line in output.getvalue().splitlines())
     assert len(MATRIX.validate_json(values["matrix"])["include"]) == SHARDS["providers"]
     assert MATRIX.validate_json(values["qualification"]) == {
-        "include": ({"suite": "providers", "count": SHARDS["providers"]},)
+        "include": (
+            {
+                "suite": "providers",
+                "count": SHARDS["providers"],
+                "artifact_pattern": f"integration-execution-providers-[0-9]*-of-{SHARDS['providers']}",
+            },
+        )
     }
     assert errors.getvalue() == ""
+
+
+def test_qualification_downloads_only_its_group_and_never_the_replica_sibling() -> None:
+    output: Final = StringIO()
+    assert main(("matrix",), {"REQUESTED_SUITE": "all"}, StringIO(), output, StringIO()) == 0
+    values: Final = dict(line.split("=", 1) for line in output.getvalue().splitlines())
+    planned: Final = MATRIX.validate_json(values["matrix"])["include"]
+    groups: Final = MATRIX.validate_json(values["qualification"])["include"]
+    names: Final = {
+        f"integration-execution-{item['suite']}-{item['index']}-of-{item['count']}": item["suite"] for item in planned
+    }
+    for group in groups:
+        pattern: Final = group["artifact_pattern"]
+        assert isinstance(pattern, str)
+        assert frozenset(name for name in names if fnmatchcase(name, pattern)) == frozenset(
+            name for name, suite in names.items() if suite == group["suite"]
+        )

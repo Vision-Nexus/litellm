@@ -299,7 +299,7 @@ jobs:
       - name: Download execution records from this attempt
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
-          pattern: integration-execution-${{ matrix.suite }}-*-of-${{ matrix.count }}-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: ${{ matrix.artifact_pattern }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: shards
 
       - name: Verify every candidate ran exactly once and passed or skipped
