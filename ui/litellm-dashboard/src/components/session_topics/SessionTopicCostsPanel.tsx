@@ -28,7 +28,7 @@ const pageSize = 50;
 function CostValue({ cost }: { cost: TopicCostTotals | null }) {
   const presentation = costPresentation(cost);
   return (
-    <div>
+    <div className="min-w-36 whitespace-normal">
       <span>{presentation.label}</span>
       {presentation.detail && <p className="max-w-64 text-xs text-muted-foreground">{presentation.detail}</p>}
     </div>
@@ -166,7 +166,7 @@ export default function SessionTopicCostsPanel({
             <TableBody>
               {costs.data.items.map((row) => (
                 <TableRow key={row.session_ref ?? row.key_hash ?? JSON.stringify([row.topic, row.category])}>
-                  <TableCell className="max-w-96 whitespace-normal break-words">
+                  <TableCell className="min-w-56 max-w-96 whitespace-normal break-words">
                     {query.cost_group === "key" ? `Key ${row.key_hash?.slice(0, 12)}` : row.topic ?? "Not generated"}
                     <p className="text-xs text-muted-foreground">
                       {row.category?.replaceAll("_", " ") ?? "Unclassified"}
